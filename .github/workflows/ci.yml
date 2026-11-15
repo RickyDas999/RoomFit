@@ -10,7 +10,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -e '.[dev]'
       - run: ruff check .
-      - run: mypy app tests
+      - run: mypy app tests scripts
       - run: pytest
   frontend:
     runs-on: ubuntu-latest
