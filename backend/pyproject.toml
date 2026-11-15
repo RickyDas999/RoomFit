@@ -2,7 +2,9 @@
 name = "roomfit-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["fastapi", "uvicorn", "httpx"]
+# fastapi and pydantic are pinned because backend/openapi.json (and a test on it) depends on
+# the exact schema they generate; bump them together with `python -m scripts.dump_openapi`.
+dependencies = ["fastapi==0.163.0", "pydantic==2.14.3", "uvicorn", "httpx"]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
@@ -15,3 +17,4 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

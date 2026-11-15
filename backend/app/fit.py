@@ -57,6 +57,21 @@ class Evaluation(BaseModel):
     verdict: Verdict
 
 
+class Zone(BaseModel):
+    """A clearance area the UI can shade: red when `broken`, with how far short it is."""
+
+    rule: Literal[
+        "path_from_door",
+        "bed_open_side",
+        "in_front_of_dresser",
+        "in_front_of_closet",
+        "behind_desk_chair",
+    ]
+    rect: Rect
+    broken: bool
+    short_in: float
+
+
 def orient(d: Dimensions) -> tuple[float, float]:
     """(along, across): the long side runs along the wall. Rotation is tried in M5."""
     return max(d.w, d.d), min(d.w, d.d)
@@ -230,6 +245,48 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
         missing_needs=missing,
         verdict=verdict_for(bool(fails), missing, coverage),
     )
+
+
+def zones_for(plan: Plan, placed: dict[Role, Rect], ev: Evaluation) -> list[Zone]:
+    """Clearance rectangles (canonical frame) for everything placed, plus the door path.
+
+    Each rectangle is clipped to the room; one that falls entirely outside is dropped.
+    """
+    short: dict[str, float] = {}
+    for f in ev.hard_fails:
+        short[f.rule] = max(short.get(f.rule, 0.0), f.short_in)
+    zones: list[Zone] = []
+
+    def add(rule: str, r: Rect) -> None:
+        x, y = max(r.x, 0.0), max(r.y, 0.0)
+        clipped = Rect(x=x, y=y, w=min(r.x2, plan.W) - x, d=min(r.y2, plan.D) - y)
+        if clipped.w > EPS and clipped.d > EPS:
+            zones.append(
+                Zone.model_validate(
+                    {"rule": rule, "rect": clipped, "broken": rule in short, "short_in": short.get(rule, 0.0)}
+                )
+            )
+
+    add("path_from_door", plan.lane)
+    if "bed" in placed:  # shade the more open long side
+        bed = placed["bed"]
+        obs = [r for n, r in placed.items() if n not in ("bed", "nightstand")]
+        if plan.closet:
+            obs.append(plan.closet)
+        left = _free(bed, "-x", obs, plan.W, plan.D)
+        right = _free(bed, "+x", obs, plan.W, plan.D)
+        x = bed.x - BED_OPEN_SIDE if left >= right else bed.x2
+        add("bed_open_side", Rect(x=x, y=bed.y, w=BED_OPEN_SIDE, d=bed.d))
+    if "dresser" in placed:
+        d = placed["dresser"]
+        add("in_front_of_dresser", Rect(x=d.x, y=d.y2, w=d.w, d=FRONT_CLEARANCE))
+    if plan.closet_front:
+        add("in_front_of_closet", plan.closet_front)
+    if "desk_chair" in placed:
+        c = placed["desk_chair"]
+        behind_right = plan.slots["desk"].across_dir > 0  # desk on the left wall: behind = +x
+        add("behind_desk_chair", Rect(x=c.x2 if behind_right else c.x - CHAIR_BACK, y=c.y, w=CHAIR_BACK, d=c.d))
+    return zones
 
 
 def evaluate_layout(room: Room, fp: Footprints) -> tuple[Plan, dict[Role, Rect], Evaluation]:
