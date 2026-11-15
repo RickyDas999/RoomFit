@@ -4,9 +4,10 @@ Read `docs/HANDOFF.md` first. It defines the product, rules of engagement, and m
 
 ## Commands
 - Backend (from `backend/`): `python3.12 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'`
-  - Run: `uvicorn app.main:app --reload`
+  - Run: `set -a; . ./.env; set +a; uvicorn app.main:app --reload` (the app reads the Shopify credentials from the environment; without them `/api/recommend` returns 502)
   - Check: `ruff check . && mypy app tests scripts && pytest`
   - After changing the API: `python -m scripts.dump_openapi` (rewrites `backend/openapi.json`; a test fails if it is stale), then regenerate the frontend types.
 - Frontend (from `frontend/`): `npm install`
-  - Run: `npm run dev`
+  - Run: `npm run dev` (proxies `/api` to port 8000; use `API_URL=http://localhost:PORT npm run dev` for another port)
+  - After an API change: `npm run gen:api` regenerates `src/api/schema.d.ts` from `backend/openapi.json`
   - Check: `npm run lint && npx tsc -b && npm test && npm run build`
