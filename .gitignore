@@ -8,3 +8,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+.env.*
+!.env.example
+coverage/
+*.tsbuildinfo
+build/
