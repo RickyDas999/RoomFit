@@ -8,7 +8,7 @@ Returns a structured ParseResult: status "parsed" (w x d [x h] in inches),
 import re
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 MAX_INCHES = 300.0  # sanity guard: nothing in a bedroom is 25 ft long
 MIN_INCHES = 6.0  # width and depth must be at least this (Ricky, Nov 15)
@@ -30,8 +30,8 @@ Reason = Literal[
 
 
 class Dimensions(BaseModel):
-    w: float
-    d: float
+    w: float = Field(gt=0)
+    d: float = Field(gt=0)
     h: float | None = None  # many listings give only width x depth
 
 
