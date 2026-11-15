@@ -23,3 +23,9 @@ Running record of decisions we are going forward with. Newest last. Replaces `do
 | 2026-11-15 | M2: the same size stated twice (inches and cm) counts as one size, tolerance 1 in. 4+ numbers in a row is ambiguous (`too_many_values`); a quantity prefix ("Qty 2 x 18 in", "Pack of 4 x ...") is ambiguous (`quantity`). Fractions (`39 1/2"`) and feet+inches (`6'2"`) are read as real values. | Claude, from M2 test-writer/reviewer (to confirm) |
 | 2026-11-15 | M2: width and depth must be at least 6 in (`MIN_INCHES`), at most 300 in; smaller is ambiguous (`implausible`). | Ricky |
 | 2026-11-15 | M2: Ricky accepted the parser defaults (repeated identical size = parsed; "Overall" beats component sizes; 1 in tolerance for in/cm duplicates; `L` fills the missing W/D, explicit W wins). | Ricky |
+| 2026-11-15 | M3: the 36 in door path runs from the door to the room's center line (depth / 2), not to the opposite wall. | Ricky |
+| 2026-11-15 | M3: desk chair footprint is a fixed, labeled assumption of 20 x 20 in (`rules.CHAIR_ASSUMED`), because 0 of 25 live chair listings had parseable dimensions. | Ricky |
+| 2026-11-15 | M3: sample room is 144 x 192 in; door 32 in wide centered on the top wall; window 48 in centered on the bottom wall; closet 48 x 24 in in the top-left corner. | Ricky |
+| 2026-11-15 | M3: coverage = furniture footprint / full room area (closet not subtracted). Verdict: any hard fail = `cramped`; else missing need = `incomplete`; else coverage over 40% = `cramped`; else `fits`. Warn above 40%, flag above 45%. | Ricky |
+| 2026-11-15 | M3: door swing is not enforced as a rule (it is drawn in M4). | Ricky |
+| 2026-11-15 | M3: one PR (not split into geometry and recommend). | Claude (Ricky did not answer the split question) |
