@@ -26,6 +26,17 @@ MIN_INTERVAL = 0.2  # 5 requests/second limit
 MAX_RETRIES = 3
 
 
+MAX_RETRY_AFTER = 30.0
+
+
+def _retry_after(value: str | None) -> float:
+    """Seconds to wait. Falls back to 1s if missing or an HTTP-date; capped."""
+    try:
+        return min(max(float(value or "1"), 0.0), MAX_RETRY_AFTER)
+    except ValueError:
+        return 1.0
+
+
 class CatalogError(Exception):
     """Raised for catalog failures. Never includes credentials or tokens."""
 
@@ -56,33 +67,38 @@ class Product(BaseModel):
 
 
 def _plain(text: str) -> str:
+    text = re.sub(r"(?is)<(script|style)\b.*?</\1\s*>", " ", text)
     return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", text)).split())
 
 
 def parse_product(raw: dict[str, Any]) -> Product | None:
-    """Parse one catalog product. Returns None if it has no usable variant."""
-    variants = raw.get("variants") or []
-    if not variants:
+    """Parse one catalog product. Returns None if it is unusable (never raises)."""
+    try:
+        v = next(
+            (v for v in raw.get("variants") or [] if v.get("price") and v.get("seller")), None
+        )
+        if v is None:
+            return None
+        price, seller = v["price"], v["seller"]
+        media = raw.get("media") or []
+        desc = (raw.get("description") or {}).get("html") or (v.get("description") or {}).get(
+            "plain", ""
+        )
+        return Product(
+            id=raw["id"],
+            variant_id=v["id"],
+            title=raw.get("title", ""),
+            shop=Shop(
+                id=seller["id"], name=seller.get("name", ""), domain=seller.get("domain", "")
+            ),
+            price=Price(amount=price["amount"], currency=price["currency"]),
+            image_url=media[0].get("url") if media else None,
+            url=raw.get("url"),
+            native_checkout=bool((v.get("eligible") or {}).get("native_checkout")),
+            description=_plain(desc),
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):  # ValueError covers pydantic
         return None
-    v = variants[0]
-    price, seller = v.get("price"), v.get("seller")
-    if not price or not seller:
-        return None
-    media = raw.get("media") or []
-    desc = (raw.get("description") or {}).get("html") or (v.get("description") or {}).get(
-        "plain", ""
-    )
-    return Product(
-        id=raw["id"],
-        variant_id=v["id"],
-        title=raw.get("title", ""),
-        shop=Shop(id=seller["id"], name=seller.get("name", ""), domain=seller.get("domain", "")),
-        price=Price(amount=price["amount"], currency=price["currency"]),
-        image_url=media[0].get("url") if media else None,
-        url=raw.get("url"),
-        native_checkout=bool((v.get("eligible") or {}).get("native_checkout")),
-        description=_plain(desc),
-    )
 
 
 class CatalogClient:
@@ -101,6 +117,7 @@ class CatalogClient:
         self._token_expires = 0.0
         self._next_call = 0.0
         self._lock = asyncio.Lock()
+        self._token_lock = asyncio.Lock()
         self._rpc_id = 0
 
     @classmethod
@@ -111,21 +128,25 @@ class CatalogClient:
             raise CatalogError(f"missing env var {e.args[0]} (see backend/.env.example)") from None
 
     async def _get_token(self) -> str:
-        if self._token and self._now() < self._token_expires:
+        async with self._token_lock:  # concurrent searches share one token fetch
+            if self._token and self._now() < self._token_expires:
+                return self._token
+            r = await self._http.post(
+                TOKEN_URL,
+                json={
+                    "client_id": self._id,
+                    "client_secret": self._secret,
+                    "grant_type": "client_credentials",
+                },
+            )
+            if r.status_code != 200:
+                raise CatalogError(f"token request failed: HTTP {r.status_code}")
+            try:
+                self._token = str(r.json()["access_token"])
+            except (ValueError, KeyError, TypeError):
+                raise CatalogError("token response had no access_token") from None
+            self._token_expires = self._now() + TOKEN_TTL
             return self._token
-        r = await self._http.post(
-            TOKEN_URL,
-            json={
-                "client_id": self._id,
-                "client_secret": self._secret,
-                "grant_type": "client_credentials",
-            },
-        )
-        if r.status_code != 200:
-            raise CatalogError(f"token request failed: HTTP {r.status_code}")
-        self._token = str(r.json()["access_token"])
-        self._token_expires = self._now() + TOKEN_TTL
-        return self._token
 
     async def _throttle(self) -> None:
         # ponytail: one lock spaces all calls 0.2s apart; fine for ~5 slots per request
@@ -164,11 +185,20 @@ class CatalogClient:
                 break
             if attempt == MAX_RETRIES:
                 raise CatalogError("rate limited (HTTP 429) after retries")
-            await self._sleep(float(r.headers.get("Retry-After", "1")))
+            await self._sleep(_retry_after(r.headers.get("Retry-After")))
         if r.status_code != 200:
             raise CatalogError(f"search failed: HTTP {r.status_code}")
-        data = r.json()
-        if "error" in data:
-            raise CatalogError(f"search error: {data['error'].get('message', 'unknown')}")
-        raw = data.get("result", {}).get("structuredContent", {}).get("products", [])
+        try:
+            data = r.json()
+        except ValueError:
+            raise CatalogError("search response was not JSON") from None
+        if not isinstance(data, dict):
+            raise CatalogError("search response was not a JSON object")
+        if data.get("error"):
+            message = (data["error"] or {}).get("message", "unknown")
+            raise CatalogError(f"search error: {message}")
+        result = data.get("result") or {}
+        if result.get("isError"):
+            raise CatalogError("search error: tool reported isError")
+        raw = (result.get("structuredContent") or {}).get("products") or []
         return [p for p in map(parse_product, raw) if p]

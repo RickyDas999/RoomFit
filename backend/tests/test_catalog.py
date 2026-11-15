@@ -235,3 +235,50 @@ def test_catalog_source_has_no_persistence() -> None:
     src = Path(catalog_module.__file__).read_text()
     for banned in ("open(", "write_text", "write_bytes", "sqlite", "shelve", "pickle"):
         assert banned not in src
+
+
+def test_concurrent_searches_share_one_token_fetch() -> None:
+    fake = Fake()
+    client = make_client(fake)
+
+    async def go() -> list[Any]:
+        return await asyncio.gather(*(client.search(f"q{i}") for i in range(5)))
+
+    run(go())
+    assert fake.token_calls == 1
+    assert fake.searches == 5
+
+
+def test_retry_after_http_date_falls_back_and_huge_is_capped() -> None:
+    from app.catalog import _retry_after
+
+    assert _retry_after("Wed, 21 Oct 2026 07:28:00 GMT") == 1.0
+    assert _retry_after(None) == 1.0
+    assert _retry_after("7") == 7.0
+    assert _retry_after("99999") == 30.0
+    assert _retry_after("-5") == 0.0
+
+
+def test_malformed_product_is_skipped_not_fatal() -> None:
+    bad = make_product(2)
+    bad["variants"][0]["price"]["amount"] = "not-a-number"
+    fake = Fake(products=[bad, make_product(3)])
+    products = run(make_client(fake).search("x"))
+    assert [p.id for p in products] == ["gid://shopify/p/3"]
+
+
+def test_token_response_without_access_token_raises_catalog_error() -> None:
+    http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
+    with pytest.raises(CatalogError, match="access_token"):
+        run(CatalogClient("c", "s", http=http).search("x"))
+
+
+def test_tool_is_error_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == TOKEN_URL:
+            return httpx.Response(200, json={"access_token": "t"})
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"isError": True}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(CatalogError, match="isError"):
+        run(CatalogClient("c", "s", http=http).search("x"))
