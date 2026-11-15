@@ -226,3 +226,38 @@ def test_committed_openapi_json_is_up_to_date() -> None:
         "backend/openapi.json is out of date: run `python -m scripts.dump_openapi` "
         "from backend/, then `npm run gen:api` in frontend/"
     )
+
+
+# --- zones are clipped to the room ---
+
+
+def test_zones_never_leave_the_room_even_in_a_short_room() -> None:
+    from app.fit import evaluate_layout
+    from app.room import Door, Room
+
+    room = Room(width=144, depth=60, door=Door(wall="top", offset=56, width=32))
+    plan, placed, ev = evaluate_layout(room, {"dresser": (36, 20), "bed": (80, 40)})
+    zones = zones_for(plan, placed, ev)
+    assert zones
+    for z in zones:
+        r = z.rect
+        assert r.x >= 0 and r.y >= 0 and r.x2 <= plan.W + 1e-9 and r.y2 <= plan.D + 1e-9, z
+
+
+def test_a_zone_that_runs_off_the_room_is_clipped_not_dropped() -> None:
+    from app.fit import evaluate_layout
+    from app.room import Door, Room
+
+    room = Room(width=144, depth=40, door=Door(wall="top", offset=56, width=32))
+    plan, placed, ev = evaluate_layout(room, {"dresser": (36, 20)})
+    dresser_zone = next(z for z in zones_for(plan, placed, ev) if z.rule == "in_front_of_dresser")
+    assert (dresser_zone.rect.y, dresser_zone.rect.y2) == (20, 40)  # 24 in zone clipped to 20 in
+
+
+def test_a_zone_entirely_outside_the_room_is_dropped() -> None:
+    from app.fit import evaluate_layout
+    from app.room import Door, Room
+
+    room = Room(width=144, depth=20, door=Door(wall="top", offset=56, width=32))
+    plan, placed, ev = evaluate_layout(room, {"dresser": (36, 20)})  # fills the whole depth
+    assert "in_front_of_dresser" not in {z.rule for z in zones_for(plan, placed, ev)}

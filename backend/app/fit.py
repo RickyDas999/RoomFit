@@ -107,12 +107,8 @@ def place_all(plan: Plan, fp: Footprints) -> dict[Role, Rect]:
     if "desk" in placed:
         desk, (cw, cd) = placed["desk"], CHAIR_ASSUMED
         on_left = plan.slots["desk"].across_dir > 0
-        y = min(
-            max(desk.y + (desk.d - cd) / 2, 0.0), plan.D - cd
-        )  # stay inside the room
-        placed["desk_chair"] = Rect(
-            x=desk.x2 if on_left else desk.x - cw, y=y, w=cw, d=cd
-        )
+        y = min(max(desk.y + (desk.d - cd) / 2, 0.0), plan.D - cd)  # stay inside the room
+        placed["desk_chair"] = Rect(x=desk.x2 if on_left else desk.x - cw, y=y, w=cw, d=cd)
     return placed
 
 
@@ -140,18 +136,11 @@ def _free(r: Rect, direction: str, obstacles: list[Rect], W: float, D: float) ->
 def _fail(rule: str, pieces: list[str], short: float, text: str) -> HardFail:
     short = round(short, 2)
     return HardFail.model_validate(
-        {
-            "rule": rule,
-            "pieces": pieces,
-            "short_in": short,
-            "message": text.format(short=f"{short:g}"),
-        }
+        {"rule": rule, "pieces": pieces, "short_in": short, "message": text.format(short=f"{short:g}")}
     )
 
 
-def verdict_for(
-    has_hard_fail: bool, missing: list[str], coverage_pct: float
-) -> Verdict:
+def verdict_for(has_hard_fail: bool, missing: list[str], coverage_pct: float) -> Verdict:
     """Hard fail -> cramped; else a missing need -> incomplete; else over the warn line -> cramped."""
     if has_hard_fail:
         return "cramped"
@@ -174,22 +163,14 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
         out = max(-r.x, -r.y, r.x2 - W, r.y2 - D, 0.0)
         if out > EPS:
             fails.append(
-                _fail(
-                    "outside_room",
-                    [a],
-                    out,
-                    f"{NAMES[a]} sticks out of the room by {{short}} in",
-                )
+                _fail("outside_room", [a], out, f"{NAMES[a]} sticks out of the room by {{short}} in")
             )
         for b in names[i + 1 :]:
             ox, oy = r.overlap(pieces[b])
             if ox > EPS and oy > EPS:
                 fails.append(
                     _fail(
-                        "overlap",
-                        [a, b],
-                        min(ox, oy),
-                        f"{NAMES[a]} overlaps {NAMES[b]} by {{short}} in",
+                        "overlap", [a, b], min(ox, oy), f"{NAMES[a]} overlaps {NAMES[b]} by {{short}} in"
                     )
                 )
 
@@ -197,14 +178,7 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
     for name, r in pieces.items():
         ox, oy = r.overlap(plan.lane)
         if ox > EPS and oy > EPS:
-            fails.append(
-                _fail(
-                    "path_from_door",
-                    [name],
-                    ox,
-                    "clear path from the door: {short} in short",
-                )
-            )
+            fails.append(_fail("path_from_door", [name], ox, "clear path from the door: {short} in short"))
 
     def obstacles_for(name: str) -> list[Rect]:
         return [r for n, r in pieces.items() if n != name]
@@ -216,12 +190,7 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
         best = max(_free(bed, "-x", obs, W, D), _free(bed, "+x", obs, W, D))
         if best + EPS < BED_OPEN_SIDE:
             fails.append(
-                _fail(
-                    "bed_open_side",
-                    ["bed"],
-                    BED_OPEN_SIDE - best,
-                    "open side of the bed: {short} in short",
-                )
+                _fail("bed_open_side", ["bed"], BED_OPEN_SIDE - best, "open side of the bed: {short} in short")
             )
     if "dresser" in placed:  # the dresser stands on the top wall and faces down
         free = _free(placed["dresser"], "+y", obstacles_for("dresser"), W, D)
@@ -260,11 +229,7 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
 
     coverage = sum(r.area for r in placed.values()) / (W * D) * 100
     status: Literal["ok", "warn", "flag"] = (
-        "flag"
-        if coverage > COVERAGE_FLAG
-        else "warn"
-        if coverage > COVERAGE_WARN
-        else "ok"
+        "flag" if coverage > COVERAGE_FLAG else "warn" if coverage > COVERAGE_WARN else "ok"
     )
     missing = []
     if "bed" not in placed:
@@ -283,22 +248,26 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
 
 
 def zones_for(plan: Plan, placed: dict[Role, Rect], ev: Evaluation) -> list[Zone]:
-    """Clearance rectangles (canonical frame) for everything that is placed, plus the door path."""
+    """Clearance rectangles (canonical frame) for everything placed, plus the door path.
+
+    Each rectangle is clipped to the room; one that falls entirely outside is dropped.
+    """
     short: dict[str, float] = {}
     for f in ev.hard_fails:
         short[f.rule] = max(short.get(f.rule, 0.0), f.short_in)
+    zones: list[Zone] = []
 
-    def zone(rule: str, rect: Rect) -> Zone:
-        return Zone.model_validate(
-            {
-                "rule": rule,
-                "rect": rect,
-                "broken": rule in short,
-                "short_in": short.get(rule, 0.0),
-            }
-        )
+    def add(rule: str, r: Rect) -> None:
+        x, y = max(r.x, 0.0), max(r.y, 0.0)
+        clipped = Rect(x=x, y=y, w=min(r.x2, plan.W) - x, d=min(r.y2, plan.D) - y)
+        if clipped.w > EPS and clipped.d > EPS:
+            zones.append(
+                Zone.model_validate(
+                    {"rule": rule, "rect": clipped, "broken": rule in short, "short_in": short.get(rule, 0.0)}
+                )
+            )
 
-    zones = [zone("path_from_door", plan.lane)]
+    add("path_from_door", plan.lane)
     if "bed" in placed:  # shade the more open long side
         bed = placed["bed"]
         obs = [r for n, r in placed.items() if n not in ("bed", "nightstand")]
@@ -307,29 +276,20 @@ def zones_for(plan: Plan, placed: dict[Role, Rect], ev: Evaluation) -> list[Zone
         left = _free(bed, "-x", obs, plan.W, plan.D)
         right = _free(bed, "+x", obs, plan.W, plan.D)
         x = bed.x - BED_OPEN_SIDE if left >= right else bed.x2
-        zones.append(
-            zone("bed_open_side", Rect(x=x, y=bed.y, w=BED_OPEN_SIDE, d=bed.d))
-        )
+        add("bed_open_side", Rect(x=x, y=bed.y, w=BED_OPEN_SIDE, d=bed.d))
     if "dresser" in placed:
         d = placed["dresser"]
-        zones.append(
-            zone("in_front_of_dresser", Rect(x=d.x, y=d.y2, w=d.w, d=FRONT_CLEARANCE))
-        )
+        add("in_front_of_dresser", Rect(x=d.x, y=d.y2, w=d.w, d=FRONT_CLEARANCE))
     if plan.closet_front:
-        zones.append(zone("in_front_of_closet", plan.closet_front))
+        add("in_front_of_closet", plan.closet_front)
     if "desk_chair" in placed:
         c = placed["desk_chair"]
-        behind_right = (
-            plan.slots["desk"].across_dir > 0
-        )  # desk on the left wall: behind = +x
-        x = c.x2 if behind_right else c.x - CHAIR_BACK
-        zones.append(zone("behind_desk_chair", Rect(x=x, y=c.y, w=CHAIR_BACK, d=c.d)))
+        behind_right = plan.slots["desk"].across_dir > 0  # desk on the left wall: behind = +x
+        add("behind_desk_chair", Rect(x=c.x2 if behind_right else c.x - CHAIR_BACK, y=c.y, w=CHAIR_BACK, d=c.d))
     return zones
 
 
-def evaluate_layout(
-    room: Room, fp: Footprints
-) -> tuple[Plan, dict[Role, Rect], Evaluation]:
+def evaluate_layout(room: Room, fp: Footprints) -> tuple[Plan, dict[Role, Rect], Evaluation]:
     plan = plan_room(room)
     placed = place_all(plan, fp)
     return plan, placed, evaluate_placed(plan, placed)

@@ -107,18 +107,14 @@ class Candidate(BaseModel):
     """A searched product the UI may offer as a swap."""
 
     product: Product
-    fits_slot: (
-        bool  # parsed dimensions that fit the slot's space (rules are checked on swap)
-    )
+    fits_slot: bool  # parsed dimensions that fit the slot's space (rules are checked on swap)
 
 
 class RecommendResponse(EvaluateResponse):
     layout: list[LayoutItem]
     sorted_by: str = "lowest price that fits"
     searched: dict[Role, SearchStats]
-    candidates: dict[
-        Role, list[Candidate]
-    ]  # every searched product per slot, cheapest first
+    candidates: dict[Role, list[Candidate]]  # every searched product per slot, cheapest first
 
 
 def _fail_sizes(ev: Evaluation) -> dict[tuple[str, tuple[str, ...]], float]:
@@ -223,10 +219,7 @@ async def recommend(
     ]
     base = _evaluate(room, chosen)
     candidates = {
-        r: [
-            Candidate(product=p, fits_slot=fits_slot(r, p))
-            for p in cheapest_first(results.get(r, []))
-        ]
+        r: [Candidate(product=p, fits_slot=fits_slot(r, p)) for p in cheapest_first(results.get(r, []))]
         for r in ROLES
     }
     return RecommendResponse(
