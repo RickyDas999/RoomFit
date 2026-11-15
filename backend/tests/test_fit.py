@@ -34,7 +34,8 @@ def test_known_good_layout_fits() -> None:
 
 
 def test_oversized_desk_breaks_behind_chair_by_six_inches() -> None:
-    # the handoff example: swap in a desk that is too deep
+    # the handoff example. (along, across) = (48, 54): a desk 54 in deep. Through the API a real
+    # listing goes through orient(); see test_m3_review.py for that path.
     _, _, ev = evaluate_layout(SAMPLE_ROOM, {**GOOD, "desk": (48, 54)})
     assert [f.message for f in ev.hard_fails] == ["behind the desk chair: 6 in short"]
     assert ev.verdict == "cramped"
@@ -49,10 +50,17 @@ def test_desk_depth_shortfall_grows_one_for_one(depth: float, short: float) -> N
 
 
 def test_bad_layout_reports_every_broken_rule() -> None:
-    bad = {**GOOD, "desk": (48, 54), "bed": (80, 70)}
+    bad = {
+        **GOOD,
+        "desk": (48, 54),
+        "dresser": (60, 30),
+    }  # deep desk, and a dresser into the lane
     _, _, ev = evaluate_layout(SAMPLE_ROOM, bad)
-    assert ev.hard_fails and ev.verdict == "cramped"
-    assert all(f.message.endswith("short") or "by" in f.message for f in ev.hard_fails)
+    assert {f.rule: f.short_in for f in ev.hard_fails} == {
+        "path_from_door": 6,
+        "behind_desk_chair": 6,
+    }
+    assert ev.verdict == "cramped"
 
 
 # --- boundaries: exactly at the limit passes, a hair under fails ---

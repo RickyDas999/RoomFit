@@ -215,7 +215,17 @@ def _avoid(region: Rect, anchor_x: int, anchor_y: int, obstacles: list[Rect]) ->
 
 
 def _closet_front(c: Rect, W: float, D: float) -> tuple[Rect, str]:
+    """The 24 in in front of the closet: on the side away from the wall it stands against.
+
+    A wide closet faces up/down, a tall one left/right (so a tall closet in a corner is
+    read as a side-wall closet).
+    """
     f = FRONT_CLEARANCE
+    if c.d > c.w:  # tall closet: try the side walls first
+        if c.x <= EPS:
+            return Rect(x=c.x2, y=c.y, w=f, d=c.d), "+x"
+        if c.x2 >= W - EPS:
+            return Rect(x=c.x - f, y=c.y, w=f, d=c.d), "-x"
     if c.y <= EPS:
         return Rect(x=c.x, y=c.y2, w=c.w, d=f), "+y"
     if c.y2 >= D - EPS:

@@ -92,9 +92,8 @@ def place_all(plan: Plan, fp: Footprints) -> dict[Role, Rect]:
     if "desk" in placed:
         desk, (cw, cd) = placed["desk"], CHAIR_ASSUMED
         on_left = plan.slots["desk"].across_dir > 0
-        placed["desk_chair"] = Rect(
-            x=desk.x2 if on_left else desk.x - cw, y=desk.y + (desk.d - cd) / 2, w=cw, d=cd
-        )
+        y = min(max(desk.y + (desk.d - cd) / 2, 0.0), plan.D - cd)  # stay inside the room
+        placed["desk_chair"] = Rect(x=desk.x2 if on_left else desk.x - cw, y=y, w=cw, d=cd)
     return placed
 
 

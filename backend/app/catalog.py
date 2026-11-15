@@ -166,6 +166,12 @@ class CatalogClient:
             self._next_call = self._now() + MIN_INTERVAL
 
     async def search(self, query: str, limit: int = SEARCH_LIMIT) -> list[Product]:
+        try:
+            return await self._search(query, limit)
+        except httpx.HTTPError as e:  # timeouts, connection errors: no URL or headers in the message
+            raise CatalogError(f"network error ({type(e).__name__})") from None
+
+    async def _search(self, query: str, limit: int) -> list[Product]:
         self._rpc_id += 1
         body = {
             "jsonrpc": "2.0",

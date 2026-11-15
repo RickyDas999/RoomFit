@@ -2,7 +2,8 @@ import asyncio
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.catalog import CatalogClient, CatalogError, Product
@@ -13,6 +14,12 @@ from app.search import SEARCH_LIMIT, Role, build_query
 app = FastAPI(title="Room Fit")
 
 ROLES: tuple[Role, ...] = ("bed", "desk", "desk_chair", "dresser", "nightstand")
+
+
+@app.exception_handler(CatalogError)
+def catalog_error(_: Request, e: CatalogError) -> JSONResponse:
+    """Any catalog failure (missing credentials, network, rate limit) is a 502, never a 500."""
+    return JSONResponse({"detail": f"catalog error: {e}"}, status_code=502)
 
 
 @app.get("/api/health")
@@ -51,9 +58,11 @@ class EvaluateResponse(BaseModel):
 def _footprints(layout: list[LayoutItem]) -> tuple[Footprints, list[Unplaced]]:
     fp: Footprints = {}
     unplaced: list[Unplaced] = []
+    seen: set[str] = set()
     for item in layout:
-        if item.slot_id in fp or any(u.slot_id == item.slot_id for u in unplaced):
+        if item.slot_id in seen:
             raise HTTPException(422, f"slot {item.slot_id} appears twice")
+        seen.add(item.slot_id)
         if item.slot_id == "desk_chair":
             continue  # the chair footprint is assumed (rules.CHAIR_ASSUMED); it follows the desk
         if item.product.dimensions is None:
@@ -95,8 +104,18 @@ class RecommendResponse(EvaluateResponse):
     searched: dict[Role, SearchStats]
 
 
-def _rule_keys(ev: Evaluation) -> set[tuple[str, tuple[str, ...]]]:
-    return {(f.rule, tuple(f.pieces)) for f in ev.hard_fails}
+def _fail_sizes(ev: Evaluation) -> dict[tuple[str, tuple[str, ...]], float]:
+    return {(f.rule, tuple(f.pieces)): f.short_in for f in ev.hard_fails}
+
+
+def _worse_than(
+    trial: Evaluation, baseline: dict[tuple[str, tuple[str, ...]], float]
+) -> bool:
+    """True if the trial adds a hard fail, or makes one that already exists bigger."""
+    return any(
+        k not in baseline or short > baseline[k]
+        for k, short in _fail_sizes(trial).items()
+    )
 
 
 @app.post("/api/recommend")
@@ -121,14 +140,14 @@ async def recommend(
         raise HTTPException(502, f"catalog error: {e}") from None
 
     def cheapest_first(ps: list[Product]) -> list[Product]:
-        return sorted(ps, key=lambda p: (p.price.amount, p.title))
+        return sorted(ps, key=lambda p: (p.price.amount, p.title, p.id))
 
     fp: Footprints = {}
     chosen: list[LayoutItem] = []
     stats: dict[Role, SearchStats] = {}
-    baseline = _rule_keys(
+    baseline = _fail_sizes(
         evaluate_layout(room, {})[2]
-    )  # fails that exist with no furniture at all
+    )  # fails with no furniture at all
     # desk last: the chair's 18 in behind-clearance depends on what is already placed
     for role in ("bed", "nightstand", "dresser", "desk"):
         if role not in results:
@@ -148,7 +167,7 @@ async def recommend(
         for p in cheapest_first(fitting):
             assert p.dimensions is not None
             trial = {**fp, role: orient(p.dimensions)}
-            if not _rule_keys(evaluate_layout(room, trial)[2]) - baseline:
+            if not _worse_than(evaluate_layout(room, trial)[2], baseline):
                 fp[role] = trial[role]
                 chosen.append(LayoutItem(slot_id=role, product=p))
                 break
