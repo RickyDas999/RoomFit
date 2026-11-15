@@ -192,3 +192,34 @@ def test_needs_default_to_everything_and_reject_unknown_values() -> None:
     bad = room().model_dump() | {"needs": ["sofa"]}
     app.dependency_overrides[get_catalog] = lambda: FakeCatalog({})
     assert client.post("/api/recommend", json={"room": bad}).status_code == 422
+
+
+# ---------- the listing must really be the searched size ----------
+
+
+def test_a_too_small_listing_is_not_taken_for_a_big_size() -> None:
+    cat = beds(176)
+    cat["king bed"] = [
+        product("k", 100, (57, 78))
+    ]  # a "king" listing that is only 57 in wide
+    fake = FakeCatalog(cat)
+    app.dependency_overrides[get_catalog] = lambda: fake
+    r = client.post(
+        "/api/recommend", json={"room": room(w=176, d=216).model_dump()}
+    ).json()
+    assert r["bed_size"] == "queen" and "too big" in r["bed_size_reason"]
+
+
+def test_a_chosen_size_with_no_matching_listing_places_no_bed_and_reports_no_size() -> (
+    None
+):
+    cat = beds(176)
+    cat["king bed"] = [product("k", 100, (57, 78))]
+    app.dependency_overrides[get_catalog] = lambda: FakeCatalog(cat)
+    r = client.post(
+        "/api/recommend",
+        json={"room": room(w=176, d=216).model_dump(), "bed_size": "king"},
+    ).json()
+    assert not any(i["slot_id"] == "bed" for i in r["layout"])
+    assert r["bed_size"] is None and r["bed_size_reason"] is None
+    assert [u["reason"] for u in r["unplaced"] if u["slot_id"] == "bed"]

@@ -28,3 +28,12 @@ def sizes_that_fit(max_along: float, max_across: float) -> list[BedSize]:
         for s, (_, w, ln) in BED_SIZES.items()
         if ln + FRAME_EXTRA <= max_along and w + FRAME_EXTRA <= max_across
     ]
+
+
+SIZE_SLACK = 2.0  # listings round and mix up length/width a little
+
+
+def matches_size(size: BedSize, along: float, across: float) -> bool:
+    """True if a frame this big could hold the mattress (a "king" listing 57 in wide is not a king)."""
+    _, w, ln = BED_SIZES[size]
+    return along + SIZE_SLACK >= ln and across + SIZE_SLACK >= w

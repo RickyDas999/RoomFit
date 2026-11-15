@@ -390,6 +390,7 @@ def plan_room(room: Room) -> Plan:
     (beside the dresser); both. The first variant with strictly more pieces fitting wins.
     """
     best = _plan(room, None, False)
+    default_side = best.bed_side
     best_n = _fit_count(room, best)
     wanted = len(room.needs) + 1
     other: Literal["left", "right"] = "left" if best.bed_side == "right" else "right"
@@ -400,7 +401,7 @@ def plan_room(room: Room) -> Plan:
         n = _fit_count(room, trial)
         if n > best_n:
             best, best_n = trial, n
-    if best.bed_side != _plan(room, None, False).bed_side:
+    if best.bed_side != default_side:
         best.notes = {**(best.notes or {}), "bed": "on the other side of the door: it fits better there"}
     return best
 

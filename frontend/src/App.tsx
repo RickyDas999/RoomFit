@@ -98,7 +98,9 @@ export default function App() {
     try {
       const plan = await evaluate(view.room, layout)
       if (mine !== latest.current) return
-      setView({ ...view, plan, layout })
+      // a swapped bed is no longer "the size we chose", so drop that explanation
+      const rec = role === 'bed' && view.rec ? { ...view.rec, bed_size_reason: null } : view.rec
+      setView({ ...view, plan, layout, rec })
     } catch (e) {
       if (mine === latest.current) setError(message(e))
     } finally {

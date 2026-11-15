@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.beds import BedChoice, BedSize, label, sizes_that_fit
+from app.beds import BedChoice, BedSize, label, matches_size, sizes_that_fit
 from app.catalog import CatalogClient, CatalogError, Product
 from app.fit import Evaluation, Footprints, Zone, evaluate_layout, orient, zones_for
 from app.room import NO_FIT, Rect, Room, Slot, plan_room, public_slots
@@ -179,10 +179,14 @@ async def recommend(
         evaluate_layout(room, {})[2]
     )  # fails with no furniture at all
 
-    def pick(role: Role, products: list[Product]) -> None:
+    def pick(role: Role, products: list[Product], size: BedSize | None = None) -> None:
         """Take the cheapest listing that fits the slot, adds no hard fail and keeps coverage ok."""
         sized = [p for p in products if p.dimensions is not None]
         fitting = [p for p in sized if fits_slot(role, p)]
+        if size is not None:  # a bed listing must really be that size
+            fitting = [
+                p for p in fitting if p.dimensions and matches_size(size, *orient(p.dimensions))
+            ]
         stats[role] = SearchStats(
             found=len(products), with_dimensions=len(sized), fit_slot=len(fitting)
         )
@@ -215,12 +219,14 @@ async def recommend(
             )
             results["bed"] = found
             bed_size = size
-            pick("bed", found)
+            pick("bed", found, size)
             if "bed" in fp:
                 break
-        if req.bed_size != "auto":
-            bed_reason = f"{label(bed_size)}: the size you chose" if bed_size else None
-        elif bed_size and "bed" in fp:
+        if "bed" not in fp or bed_size is None:
+            bed_size = None  # nothing was placed, so there is no size to report
+        elif req.bed_size != "auto":
+            bed_reason = f"{label(bed_size)}: the size you chose"
+        elif bed_size:
             top = sizes[0]
             bed_reason = (
                 f"{label(bed_size)}: the biggest size that fits this room"
@@ -257,7 +263,7 @@ async def recommend(
             return "no listing with usable dimensions"
         if st.fit_slot == 0:
             return NO_FIT[role]
-        return f"every {role.replace('_', ' ')} that fits breaks a rule"
+        return f"every {role.replace('_', ' ')} that fits breaks a rule or leaves too little floor"
 
     unplaceable = [
         Unplaced(slot_id=r, reason=why(r))
