@@ -49,3 +49,9 @@ Running record of decisions we are going forward with. Newest last. Replaces `do
 | 2026-11-16 | M4a: response size (~297 KB, mostly product descriptions) is left as is for now; trim descriptions or add compression later if it matters. | Ricky |
 | 2026-11-16 | M4: the room form's closet "yes" puts a 48 x 24 in closet in the corner at the start of the door wall (matches the sample room). | Ricky |
 | 2026-11-16 | M4: plain CSS, no UI library; clarity over polish. | Ricky |
+| 2026-11-16 | M4: the M0 health-check page and its tests are replaced by the real UI (the health endpoint stays). | Claude |
+| 2026-11-16 | M4: the frontend's TypeScript types are generated from `backend/openapi.json` with `npx openapi-typescript@7.13.0` (`npm run gen:api`), pinned and run through npx because it only supports TypeScript 5 and we pin TypeScript 6 for typescript-eslint. CI regenerates them and fails if `src/api/schema.d.ts` changed. | Claude (to confirm) |
+| 2026-11-16 | M4: room form works in inches; the door is fixed at 32 in and the window at 48 in; walls are radio buttons; the room preview (no catalog call) redraws 300 ms after the last edit; changing the room after a search clears the products, since they were chosen for another room. | Claude (to confirm) |
+| 2026-11-16 | M4: the swap list shows every searched product, including ones bigger than the slot or with no size, so a bigger desk can be tried. Products with no size are allowed and show as unplaceable. | Ricky (swap list), Claude (details) |
+| 2026-11-16 | M4: to run the app locally, load `backend/.env` with the shell (`set -a; . ./.env; set +a; uvicorn ...`); the app does not read the file itself. `API_URL=... npm run dev` points the Vite proxy at another backend port. | Claude |
+| 2026-11-16 | M4: browser checks use ego lite (not Chrome). | Ricky |

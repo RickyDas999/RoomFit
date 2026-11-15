@@ -73,11 +73,6 @@ export function FloorPlan({ room, plan, stale = false }: Props) {
                 {z.broken ? `: ${fmt(z.short_in)} in short` : ': clear'}
               </title>
             </rect>
-            {z.broken && (
-              <text {...center(z.rect)} className="plan__zone-label" textAnchor="middle">
-                {fmt(z.short_in)} in short
-              </text>
-            )}
           </g>
         ))}
 
@@ -107,6 +102,13 @@ export function FloorPlan({ room, plan, stale = false }: Props) {
               {PIECE_LABEL[role]}
             </text>
           </g>
+        ))}
+
+        {/* "N in short" labels sit above the furniture so nothing hides them */}
+        {broken.map((z) => (
+          <text key={z.rule} {...center(z.rect)} className="plan__zone-label" textAnchor="middle" data-testid={`zone-label-${z.rule}`}>
+            {fmt(z.short_in)} in short
+          </text>
         ))}
 
         {/* walls on top, with the door opening cut out of them */}

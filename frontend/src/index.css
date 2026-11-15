@@ -575,6 +575,10 @@ button.link {
   border-block-end: 0;
 }
 
+.candidate button {
+  white-space: nowrap;
+}
+
 .candidate--selected {
   background: var(--ok-bg);
 }
