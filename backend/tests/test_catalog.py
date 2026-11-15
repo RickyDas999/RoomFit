@@ -35,7 +35,11 @@ def make_product(n: int = 1, **over: Any) -> dict[str, Any]:
                 "id": f"gid://shopify/ProductVariant/{n}",
                 "price": {"amount": 8999, "currency": "USD"},
                 "eligible": {"native_checkout": True},
-                "seller": {"id": "gid://shopify/Shop/9", "name": "Test Shop", "domain": "shop.example"},
+                "seller": {
+                    "id": "gid://shopify/Shop/9",
+                    "name": "Test Shop",
+                    "domain": "shop.example",
+                },
             }
         ],
     }
@@ -46,7 +50,11 @@ def make_product(n: int = 1, **over: Any) -> dict[str, Any]:
 class Fake:
     """Mock Shopify: records requests, serves token + search from a script of search statuses."""
 
-    def __init__(self, statuses: list[int] | None = None, products: list[dict[str, Any]] | None = None):
+    def __init__(
+        self,
+        statuses: list[int] | None = None,
+        products: list[dict[str, Any]] | None = None,
+    ):
         self.requests: list[httpx.Request] = []
         self.statuses = statuses or [200]
         self.products = [make_product()] if products is None else products
@@ -62,10 +70,16 @@ class Fake:
         status = self.statuses[min(self.searches, len(self.statuses) - 1)]
         self.searches += 1
         if status == 429:
-            return httpx.Response(429, headers={"Retry-After": "7"}, json={"error": {"code": -32000}})
+            return httpx.Response(
+                429, headers={"Retry-After": "7"}, json={"error": {"code": -32000}}
+            )
         return httpx.Response(
             status,
-            json={"jsonrpc": "2.0", "id": 1, "result": {"structuredContent": {"products": self.products}}},
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"structuredContent": {"products": self.products}},
+            },
         )
 
 
@@ -97,7 +111,9 @@ def test_request_shape() -> None:
     run(make_client(fake).search("desk 40 inch", limit=30))
     token_req, search_req = fake.requests
     assert json.loads(token_req.content) == {
-        "client_id": "cid", "client_secret": SECRET, "grant_type": "client_credentials",
+        "client_id": "cid",
+        "client_secret": SECRET,
+        "grant_type": "client_credentials",
     }
     assert search_req.headers["Authorization"] == "Bearer tok-abc"
     body = json.loads(search_req.content)
@@ -121,7 +137,12 @@ def test_parses_product() -> None:
     assert p.native_checkout is True
     assert p.image_url == "https://img.example/1.jpg"
     assert p.description == 'Desk 40"W x 20"D Sturdy'
-    assert p.dimensions is None and p.dimension_source is None
+    assert p.dimensions is not None and (
+        p.dimensions.w,
+        p.dimensions.d,
+        p.dimensions.h,
+    ) == (40, 20, None)
+    assert p.dimension_status == "parsed" and p.dimension_source == '40"W x 20"D'
 
 
 def test_parse_skips_unusable_products() -> None:
@@ -137,7 +158,12 @@ def test_parse_handles_missing_optional_fields() -> None:
     raw["variants"][0]["eligible"] = {}
     p = parse_product(raw)
     assert p is not None
-    assert (p.image_url, p.url, p.description, p.native_checkout) == (None, None, "", False)
+    assert (p.image_url, p.url, p.description, p.native_checkout) == (
+        None,
+        None,
+        "",
+        False,
+    )
 
 
 def test_variant_plain_description_fallback() -> None:
@@ -176,14 +202,20 @@ def test_repeated_429_raises() -> None:
 def test_server_error_raises_without_secrets() -> None:
     with pytest.raises(CatalogError) as e:
         run(make_client(Fake(statuses=[500])).search("x"))
-    assert "500" in str(e.value) and SECRET not in str(e.value) and "tok-abc" not in str(e.value)
+    assert (
+        "500" in str(e.value)
+        and SECRET not in str(e.value)
+        and "tok-abc" not in str(e.value)
+    )
 
 
 def test_jsonrpc_error_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url) == TOKEN_URL:
             return httpx.Response(200, json={"access_token": "t"})
-        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "error": {"message": "bad"}})
+        return httpx.Response(
+            200, json={"jsonrpc": "2.0", "id": 1, "error": {"message": "bad"}}
+        )
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     with pytest.raises(CatalogError, match="bad"):
@@ -191,7 +223,9 @@ def test_jsonrpc_error_raises() -> None:
 
 
 def test_token_failure_raises() -> None:
-    http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(401)))
+    http = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(401))
+    )
     with pytest.raises(CatalogError, match="token"):
         run(CatalogClient("c", "s", http=http).search("x"))
 
@@ -268,7 +302,9 @@ def test_malformed_product_is_skipped_not_fatal() -> None:
 
 
 def test_token_response_without_access_token_raises_catalog_error() -> None:
-    http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
+    http = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+    )
     with pytest.raises(CatalogError, match="access_token"):
         run(CatalogClient("c", "s", http=http).search("x"))
 
@@ -277,7 +313,9 @@ def test_tool_is_error_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if str(request.url) == TOKEN_URL:
             return httpx.Response(200, json={"access_token": "t"})
-        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"isError": True}})
+        return httpx.Response(
+            200, json={"jsonrpc": "2.0", "id": 1, "result": {"isError": True}}
+        )
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     with pytest.raises(CatalogError, match="isError"):
