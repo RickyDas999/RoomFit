@@ -23,6 +23,8 @@ Reason = Literal[
     "multiple_sizes",
     "conflicting_labels",
     "implausible",
+    "quantity",
+    "too_many_values",
 ]
 
 
@@ -41,16 +43,25 @@ class ParseResult(BaseModel):
 
 
 # --- regex pieces (case-insensitive; written so matches are slices of the original text) ---
-_NUM = r"(?<![\d.])\d{1,4}(?:\.\d{1,3})?(?!\d)"  # bounded: no quadratic backtracking
+_NUM = (
+    r"(?<![\d./])(?:"
+    r"\d{1,2}['’′]\s*\d{1,2}(?:\.\d{1,3})?(?=\s*(?:''|[\"”″]))"  # 6'2"
+    r"|\d{1,4}[ -]\d{1,2}/\d{1,2}"  # 39 1/2
+    r"|\d{1,2}/\d{1,2}"  # 1/2
+    r"|\d{1,4}(?:\.\d{1,3})?"  # 39, 39.5
+    r")(?![\d/])"
+)
 _UNIT = r"(?:''|[\"”“″]|inches|inch|in\b|cm\b|mm\b|feet\b|ft\b|['’′‘])"
 _LABEL = r"(?:wide|width|deep|depth|length|long|height|high|tall|w|d|h|l)(?![a-wyz])"
-_ITEM = rf"{_NUM}\s*(?:{_UNIT})?(?:\s*{_LABEL})?"
+_ITEM = rf"{_NUM}\s*(?:{_UNIT})?(?:\s*{_LABEL}(?:\s*{_UNIT})?)?"
 _SEP = r"\s*(?:[x×✕]|\bby\b)\s*"
-_SEQ = re.compile(rf"{_ITEM}(?:{_SEP}{_ITEM}){{1,2}}", re.IGNORECASE)
-_ITEM_PARTS = re.compile(rf"({_NUM})\s*({_UNIT})?(?:\s*({_LABEL}))?", re.IGNORECASE)
+_SEQ = re.compile(rf"{_ITEM}(?:{_SEP}{_ITEM}){{1,5}}", re.IGNORECASE)
+_ITEM_PARTS = re.compile(
+    rf"({_NUM})\s*({_UNIT})?(?:\s*({_LABEL})(?:\s*({_UNIT}))?)?", re.IGNORECASE
+)
 # "Width: 39 in" and "43" Tall" (a unit is required, so "Height 2 drawers" is ignored)
 _PREFIX_LABELED = re.compile(
-    rf"\b(wide|width|deep|depth|length|height|tall)\b\s*[:=]?\s*({_NUM})\s*({_UNIT})",
+    rf"(?:\b(wide|width|deep|depth|length|height|tall)\b\s*[:=]?|\b([wdhl])\s*:)\s*({_NUM})\s*({_UNIT})",
     re.IGNORECASE,
 )
 _SUFFIX_LABELED = re.compile(
@@ -94,19 +105,38 @@ _COMPONENT = re.compile(
 )
 _ADJUSTABLE = re.compile(r"adjust|from\s*$|between\s*$", re.IGNORECASE)
 _RANGE_AFTER = re.compile(r"^\s*(?:to|-|–|—|and)\s*\d", re.IGNORECASE)
+_QUANTITY = re.compile(
+    r"(?:qty|quantity|buy|pack of|set of|count|pcs|pieces)\W*$", re.IGNORECASE
+)
 _OVERALL = re.compile(
     r"overall|assembled|product (?:dimension|size)|item (?:dimension|size)",
     re.IGNORECASE,
 )
 
 
+def _number(token: str) -> float:
+    """'39', '39.5', '1/2', '39 1/2', "6'2" -> float (feet+inches already in inches)."""
+    if "'" in token or "’" in token or "′" in token:
+        feet, inches = re.split(r"['’′]\s*", token)
+        return int(feet) * 12 + float(inches)
+    if "/" in token:
+        whole, _, frac = token.replace("-", " ").rpartition(" ")
+        num, den = frac.split("/")
+        return (float(whole) if whole else 0.0) + int(num) / int(den or 1)
+    return float(token)
+
+
 def _inches(value: str, unit: str | None) -> float:
-    return float(value) * _TO_INCHES.get((unit or "in").lower(), 1.0)
+    if "'" in value or "’" in value or "′" in value:
+        return _number(value)  # feet+inches: the number is already in inches
+    return _number(value) * _TO_INCHES.get((unit or "in").lower(), 1.0)
 
 
 def _context_reason(text: str, start: int, end: int, single: bool) -> Reason | None:
     before = text[max(0, start - 40) : start]
     after = re.split(r"[.;\n]", text[end : end + 25])[0]  # same sentence only
+    if _QUANTITY.search(before[-15:]):
+        return "quantity"
     if _SHIPPING.search(before) or _SHIPPING.search(after[:20]):
         return "shipping_size"
     if _MATTRESS.search(before[-30:]) or _MATTRESS.search(after[:20]):
@@ -120,6 +150,8 @@ def _context_reason(text: str, start: int, end: int, single: bool) -> Reason | N
 
 def _assign(items: list[tuple[str, str | None, str | None]]) -> Dimensions | Reason:
     """items: (number, unit, label). Returns normalized W x D x H, or a reason."""
+    if len(items) > 3:
+        return "too_many_values"
     units = [u for _, u, _ in items if u]
     if not units:
         return "no_unit"
@@ -157,6 +189,12 @@ def _assign(items: list[tuple[str, str | None, str | None]]) -> Dimensions | Rea
     )
 
 
+def _same_size(a: Dimensions, b: Dimensions) -> bool:
+    """Same size stated twice (e.g. in and cm) rounds to within 1 inch."""
+    close = abs(a.w - b.w) <= 1 and abs(a.d - b.d) <= 1
+    return close and (a.h is None or b.h is None or abs(a.h - b.h) <= 1)
+
+
 def parse_dimensions(text: str) -> ParseResult:
     found: list[tuple[Dimensions, str, str]] = []  # (dims, snippet, text before it)
     rejected: list[Reason] = []
@@ -166,8 +204,8 @@ def parse_dimensions(text: str) -> ParseResult:
         reason = _context_reason(text, m.start(), m.end(), single=False)
         if reason is None:
             parts = [
-                (n, u or None, (lab or None))
-                for n, u, lab in _ITEM_PARTS.findall(m.group())
+                (n, u or u2 or None, lab or None)
+                for n, u, lab, u2 in _ITEM_PARTS.findall(m.group())
             ]
             result = _assign(parts)
             if isinstance(result, Dimensions):
@@ -185,15 +223,23 @@ def parse_dimensions(text: str) -> ParseResult:
     if not found:  # fall back to labeled single values: "Width: 39 in", "43" Tall"
         labeled: list[tuple[str, str | None, str | None]] = []
         pieces: list[str] = []
-        for rx, order in ((_PREFIX_LABELED, (0, 1, 2)), (_SUFFIX_LABELED, (2, 0, 1))):
+        for rx in (_PREFIX_LABELED, _SUFFIX_LABELED):
             for m in rx.finditer(masked):
-                label, num, unit = (m.group(i + 1) for i in order)
+                if rx is _PREFIX_LABELED:
+                    label, num, unit = m.group(1) or m.group(2), m.group(3), m.group(4)
+                else:
+                    num, unit, label = m.group(1), m.group(2), m.group(3)
                 reason = _context_reason(text, m.start(), m.end(), single=True)
                 if reason:
                     rejected.append(reason)
                 else:
                     labeled.append((num, unit, label))
                     pieces.append(m.group().strip())
+                masked = (
+                    masked[: m.start()]
+                    + " " * (m.end() - m.start())
+                    + masked[m.end() :]
+                )
         if labeled:
             result = _assign(labeled)
             if isinstance(result, Dimensions):
@@ -203,7 +249,7 @@ def parse_dimensions(text: str) -> ParseResult:
 
     unique: list[tuple[Dimensions, str, str]] = []
     for item in found:
-        if all(item[0] != u[0] for u in unique):
+        if all(not _same_size(item[0], u[0]) for u in unique):
             unique.append(item)
     if (
         len(unique) > 1

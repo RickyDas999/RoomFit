@@ -17,9 +17,9 @@ from app.catalog import (
 )
 
 
-def client_for(
-    search: Any, clock: Clock | None = None, tokens: list[int] | None = None
-) -> tuple[CatalogClient, Clock, dict[str, int]]:
+def client_for(search: Any, clock: Clock | None = None, tokens: list[int] | None = None) -> tuple[
+    CatalogClient, Clock, dict[str, int]
+]:
     """search(n) -> httpx.Response for the n-th catalog call (0-based)."""
     clock = clock or Clock()
     counts = {"token": 0, "search": 0}
@@ -34,31 +34,21 @@ def client_for(
         return search(n, request)  # type: ignore[no-any-return]
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    return (
-        CatalogClient("cid", "sec", http=http, sleep=clock.sleep, now=clock.now),
-        clock,
-        counts,
-    )
+    return CatalogClient("cid", "sec", http=http, sleep=clock.sleep, now=clock.now), clock, counts
 
 
 def ok(products: list[dict[str, Any]]) -> httpx.Response:
-    return httpx.Response(
-        200, json={"result": {"structuredContent": {"products": products}}}
-    )
+    return httpx.Response(200, json={"result": {"structuredContent": {"products": products}}})
 
 
 # --- Retry-After handling -------------------------------------------------
 
 
 @pytest.mark.parametrize("value", [None, "soon", "Wed, 21 Oct 2026 07:28:00 GMT", ""])
-def test_429_with_missing_or_unparseable_retry_after_still_retries(
-    value: str | None,
-) -> None:
+def test_429_with_missing_or_unparseable_retry_after_still_retries(value: str | None) -> None:
     headers = {} if value is None else {"Retry-After": value}
     client, clock, counts = client_for(
-        lambda n, r: (
-            httpx.Response(429, headers=headers) if n == 0 else ok([make_product()])
-        )
+        lambda n, r: httpx.Response(429, headers=headers) if n == 0 else ok([make_product()])
     )
     assert len(asyncio.run(client.search("x"))) == 1
     assert counts["search"] == 2
@@ -67,9 +57,7 @@ def test_429_with_missing_or_unparseable_retry_after_still_retries(
 
 def test_429_negative_retry_after_does_not_crash() -> None:
     client, _, counts = client_for(
-        lambda n, r: (
-            httpx.Response(429, headers={"Retry-After": "-5"}) if n == 0 else ok([])
-        )
+        lambda n, r: httpx.Response(429, headers={"Retry-After": "-5"}) if n == 0 else ok([])
     )
     assert asyncio.run(client.search("x")) == []
     assert counts["search"] == 2
@@ -77,9 +65,7 @@ def test_429_negative_retry_after_does_not_crash() -> None:
 
 def test_429_huge_retry_after_is_capped() -> None:
     client, clock, _ = client_for(
-        lambda n, r: (
-            httpx.Response(429, headers={"Retry-After": "86400"}) if n == 0 else ok([])
-        )
+        lambda n, r: httpx.Response(429, headers={"Retry-After": "86400"}) if n == 0 else ok([])
     )
     asyncio.run(client.search("x"))
     assert max(clock.sleeps) <= 60  # a request must not hang for a day
@@ -122,9 +108,7 @@ def test_concurrent_searches_share_one_token() -> None:
 
 def test_token_response_without_access_token_raises_catalog_error() -> None:
     http = httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            lambda r: httpx.Response(200, json={"error": "nope"})
-        )
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"error": "nope"}))
     )
     with pytest.raises(CatalogError):
         asyncio.run(CatalogClient("c", "s", http=http).search("x"))
@@ -160,9 +144,7 @@ def test_null_fields_in_response_do_not_crash(body: dict[str, Any]) -> None:
     assert asyncio.run(client.search("x")) == []
 
 
-@pytest.mark.parametrize(
-    "content", [b"<html>502 bad gateway</html>", b"", b"{not json"]
-)
+@pytest.mark.parametrize("content", [b"<html>502 bad gateway</html>", b"", b"{not json"])
 def test_malformed_json_body_raises_catalog_error(content: bytes) -> None:
     client, _, _ = client_for(lambda n, r: httpx.Response(200, content=content))
     with pytest.raises(CatalogError):
@@ -211,9 +193,7 @@ def test_unusable_first_variant_falls_back_to_next() -> None:
 
 
 def test_script_tags_stripped_from_description() -> None:
-    raw = make_product(
-        description={"html": "<p>Desk</p><script>alert(1)</script><b>40in</b>"}
-    )
+    raw = make_product(description={"html": "<p>Desk</p><script>alert(1)</script><b>40in</b>"})
     p = parse_product(raw)
     assert p is not None
     assert "<" not in p.description and "alert" not in p.description
@@ -221,9 +201,7 @@ def test_script_tags_stripped_from_description() -> None:
 
 
 def test_entities_decoded_and_whitespace_collapsed() -> None:
-    raw = make_product(
-        description={"html": "A&amp;B&nbsp;&nbsp;&#8243;\n\n<br/>\t30&times;15"}
-    )
+    raw = make_product(description={"html": "A&amp;B&nbsp;&nbsp;&#8243;\n\n<br/>\t30&times;15"})
     p = parse_product(raw)
     assert p is not None
     assert "  " not in p.description and "&amp;" not in p.description

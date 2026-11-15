@@ -148,3 +148,51 @@ def test_long_adversarial_text_is_fast() -> None:
         t = time.perf_counter()
         parse_dimensions(text)
         assert time.perf_counter() - t < 2
+
+
+def test_unit_after_label_applies_to_all() -> None:
+    r = parse_dimensions("31.5W x 15.7D x 29.5H in")
+    assert r.dimensions == D(w=31.5, d=15.7, h=29.5)
+
+
+def test_more_than_three_numbers_is_ambiguous_not_truncated() -> None:
+    for text in ("1 x 2 x 3 in x 4 in", "5 x 5 x 5 x 5 x 5 in"):
+        r = parse_dimensions(text)
+        assert r.status == "ambiguous" and r.reason == "too_many_values", text
+        assert r.dimensions is None
+
+
+def test_same_size_in_inches_and_cm_is_parsed() -> None:
+    for text in (
+        '48" W x 24" D x 30" H (122 x 61 x 76 cm)',
+        "122 x 61 x 76 cm / 48 x 24 x 30 in",
+    ):
+        r = parse_dimensions(text)
+        assert r.status == "parsed", text
+        assert r.dimensions is not None and abs(r.dimensions.w - 48) <= 1
+
+
+def test_different_sizes_in_different_units_stay_ambiguous() -> None:
+    r = parse_dimensions('Small 40" x 20" x 30"; Large 150 x 70 x 90 cm')
+    assert r.status == "ambiguous" and r.reason == "multiple_sizes"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ('39 1/2" W x 20" D', D(w=39.5, d=20)),
+        ("39-1/2 in x 20 in", D(w=39.5, d=20)),
+        ("6'2\" W x 2' D", D(w=74, d=24)),
+    ],
+)
+def test_fractions_and_feet_inches(text: str, expected: Dimensions) -> None:
+    r = parse_dimensions(text)
+    assert r.status == "parsed" and r.dimensions == expected
+
+
+@pytest.mark.parametrize(
+    "text", ["Qty 2 x 18 in legs", "Buy 2 x 24 in shelves", "Pack of 4 x 12 in tiles"]
+)
+def test_quantity_prefix_is_not_a_size(text: str) -> None:
+    r = parse_dimensions(text)
+    assert r.status == "ambiguous" and r.reason == "quantity"

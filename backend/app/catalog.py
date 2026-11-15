@@ -15,7 +15,7 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel
 
-from app.dimensions import Dimensions, parse_dimensions
+from app.dimensions import Dimensions, Reason, parse_dimensions
 from app.search import SEARCH_LIMIT
 
 TOKEN_URL = "https://api.shopify.com/auth/access_token"
@@ -66,7 +66,7 @@ class Product(BaseModel):
     dimensions: Dimensions | None = None  # W x D x H in inches, from the M2 parser
     dimension_source: str | None = None  # matched text snippet
     dimension_status: Literal["parsed", "ambiguous", "missing"] = "missing"
-    dimension_reason: str | None = None  # why not "parsed" (see dimensions.Reason)
+    dimension_reason: Reason | None = None  # why not "parsed"
 
 
 def _plain(text: str) -> str:
