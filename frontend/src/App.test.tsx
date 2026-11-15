@@ -262,3 +262,80 @@ describe('types', () => {
     expect(Object.keys(rec)).toEqual(expect.arrayContaining(['layout', 'candidates', 'searched', 'sorted_by']))
   })
 })
+
+describe('room edits while things are in flight (review findings)', () => {
+  const emptyWhenNoLayout: Api['evaluate'] = (body) =>
+    json(body.layout.length === 0 ? makePlan({ placed: {}, zones: [], evaluation: makePlan().evaluation }) : makePlan())
+
+  it('"Use the sample room" on the sample room clears the products AND redraws the empty plan', async () => {
+    const f = mockApi({ evaluate: emptyWhenNoLayout })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(findButton())
+    await screen.findByText('Twin XL bed')
+    expect(await screen.findByTestId('piece-bed')).toBeInTheDocument()
+    const before = calls(f, '/api/evaluate').length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use the sample room' })) // same room as now
+    await waitFor(() => expect(calls(f, '/api/evaluate').length).toBe(before + 1))
+    await waitFor(() => expect(screen.queryByTestId('piece-bed')).toBeNull()) // plan matches the (empty) cards
+    expect(screen.queryByText('Twin XL bed')).toBeNull()
+    expect(screen.getAllByText('Nothing chosen yet.').length).toBeGreaterThan(0)
+    expect(document.querySelector('figure')).not.toHaveClass('plan--stale')
+  })
+
+  it('an edit back to the same room also redraws', async () => {
+    const f = mockApi({ evaluate: emptyWhenNoLayout })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(findButton())
+    await screen.findByText('Twin XL bed')
+    fireEvent.change(screen.getByLabelText('Width (in)'), { target: { value: '120' } })
+    fireEvent.change(screen.getByLabelText('Width (in)'), { target: { value: '144' } })
+    await waitFor(() => expect(screen.queryByTestId('piece-bed')).toBeNull())
+    expect(calls(f, '/api/evaluate').at(-1)?.room).toMatchObject({ width: 144 })
+  })
+
+  it('does not leave the search button stuck when the room is edited mid-search and the redraw fails', async () => {
+    const slow = deferred<Response>()
+    let failPreview = false
+    mockApi({ recommend: () => slow.promise, evaluate: () => (failPreview ? json({ detail: 'preview failed' }, 500) : json(makePlan())) })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(findButton())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Searching…' })).toBeDisabled())
+    failPreview = true
+    fireEvent.change(screen.getByLabelText('Width (in)'), { target: { value: '120' } })
+    expect(await errorText('preview failed')).toBeInTheDocument()
+    expect(findButton()).toBeEnabled() // not stuck on "Searching…"
+    expect(screen.getByRole('button', { name: 'Use the sample room' })).toBeEnabled()
+  })
+
+  it('ignores a search result that arrives after the form moved to an invalid room', async () => {
+    const slow = deferred<Response>()
+    mockApi({ recommend: () => slow.promise })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(findButton())
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/Searching/))
+    fireEvent.change(screen.getByLabelText(/Door position/), { target: { value: '140' } }) // invalid
+    slow.resolve(await json(makeRecommend()))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByText('Twin XL bed')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('')
+  })
+
+  it('dims the plan from the moment of an edit until it has been redrawn', async () => {
+    const pending = deferred<Response>()
+    let hold = false
+    mockApi({ evaluate: () => (hold ? pending.promise : json(makePlan())) })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    hold = true
+    fireEvent.change(screen.getByLabelText('Depth (in)'), { target: { value: '150' } })
+    expect(document.querySelector('figure')).toHaveClass('plan--stale')
+    await new Promise((r) => setTimeout(r, 400))
+    pending.resolve(await json(makePlan()))
+    await waitFor(() => expect(document.querySelector('figure')).not.toHaveClass('plan--stale'))
+  })
+})

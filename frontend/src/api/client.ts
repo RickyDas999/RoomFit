@@ -30,7 +30,11 @@ async function post<T>(url: string, body: unknown): Promise<T> {
     }
     throw new ApiError(res.status, message)
   }
-  return (await res.json()) as T
+  try {
+    return (await res.json()) as T
+  } catch {
+    throw new ApiError(res.status, 'The server sent a reply the app could not read.')
+  }
 }
 
 /** Re-check a layout (used for the room preview and after a swap). Does not touch the catalog. */

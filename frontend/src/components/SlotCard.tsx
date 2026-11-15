@@ -47,7 +47,7 @@ function ProductSummary({ product, assumed, slot }: { product: Product; assumed:
   const href = safeUrl(product.url)
   return (
     <div className="product">
-      {product.image_url ? <img src={product.image_url} alt="" width={72} height={72} loading="lazy" /> : <div className="product__noimg" aria-hidden="true" />}
+      {safeUrl(product.image_url) ? <img src={safeUrl(product.image_url) ?? undefined} alt="" width={72} height={72} loading="lazy" /> : <div className="product__noimg" aria-hidden="true" />}
       <div className="product__body">
         <p className="product__title">{href ? <a href={href} target="_blank" rel="noreferrer">{product.title}</a> : product.title}</p>
         <p className="product__meta">
@@ -78,7 +78,7 @@ export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap 
 
       {slot.fits && candidates.length > 0 && (
         <>
-          <button type="button" className="link" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((o) => !o)}>
+          <button type="button" className="link" aria-expanded={open} aria-controls={open ? listId : undefined} onClick={() => setOpen((o) => !o)}>
             {open ? 'Hide alternatives' : `Swap (${candidates.length} found)`}
           </button>
           {open && (

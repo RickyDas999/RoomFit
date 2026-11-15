@@ -32,8 +32,11 @@ export function Verdict({ evaluation }: { evaluation: Evaluation }) {
   )
 }
 
+/** One decimal at most (the server sends two). */
+const shown = (n: number) => Math.round(n * 10) / 10
+
 export function CoverageMeter({ evaluation }: { evaluation: Evaluation }) {
-  const pct = evaluation.coverage_pct
+  const pct = shown(evaluation.coverage_pct)
   const fill = Math.min(pct, METER_MAX) / METER_MAX
   return (
     <div className="coverage">
@@ -69,7 +72,7 @@ export function FlagsList({ plan }: { plan: EvaluateResponse }) {
   if (ev.coverage_status !== 'ok') {
     items.push({
       key: 'coverage',
-      text: ev.coverage_status === 'flag' ? `Too full: ${ev.coverage_pct}% of the floor is covered (flag above 45%)` : `Getting full: ${ev.coverage_pct}% of the floor is covered (warning above 40%)`,
+      text: ev.coverage_status === 'flag' ? `Too full: ${shown(ev.coverage_pct)}% of the floor is covered (flag above 45%)` : `Getting full: ${shown(ev.coverage_pct)}% of the floor is covered (warning above 40%)`,
       kind: 'soft',
     })
   }

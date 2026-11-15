@@ -32,7 +32,7 @@ const REASON_TEXT: Record<string, string> = {
 }
 
 export function reasonText(reason: string | null | undefined): string {
-  return (reason && REASON_TEXT[reason]) || 'the description gives no size'
+  return (reason && Object.hasOwn(REASON_TEXT, reason) ? REASON_TEXT[reason] : undefined) ?? 'the description gives no size'
 }
 
 /** Only link to https pages. */

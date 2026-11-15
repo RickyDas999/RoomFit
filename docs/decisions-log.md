@@ -55,3 +55,4 @@ Running record of decisions we are going forward with. Newest last. Replaces `do
 | 2026-11-16 | M4: the swap list shows every searched product, including ones bigger than the slot or with no size, so a bigger desk can be tried. Products with no size are allowed and show as unplaceable. | Ricky (swap list), Claude (details) |
 | 2026-11-16 | M4: to run the app locally, load `backend/.env` with the shell (`set -a; . ./.env; set +a; uvicorn ...`); the app does not read the file itself. `API_URL=... npm run dev` points the Vite proxy at another backend port. | Claude |
 | 2026-11-16 | M4: browser checks use ego lite (not Chrome). | Ricky |
+| 2026-11-16 | M4: any room edit (even back to the same room, or "Use the sample room") drops in-flight requests, clears the products and redraws the empty plan; the plan is dimmed from the edit until it is redrawn. Coverage is shown to one decimal. Product images are only loaded over https. | Claude, from M4 review |

@@ -23,6 +23,10 @@ export default function App() {
   const [view, setView] = useState<View | null>(null)
   const [busy, setBusy] = useState<'idle' | 'searching' | 'checking'>('idle')
   const [error, setError] = useState<string | null>(null)
+  // True from an edit until the plan has been redrawn for the new room (the plan is dimmed meanwhile).
+  const [dirty, setDirty] = useState(false)
+  // Counts edits, so even an edit back to the same room redraws the plan.
+  const [edits, setEdits] = useState(0)
   const latest = useRef(0) // only the newest request may update the screen
 
   const errors = useMemo(() => validate(form), [form])
@@ -39,18 +43,22 @@ export default function App() {
         if (mine !== latest.current) return
         setView({ room, plan, layout: [], rec: null })
         setError(null)
-        setBusy('idle')
+        setDirty(false)
       } catch (e) {
         if (mine === latest.current) setError(message(e))
       }
     }, 300)
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- roomKey stands for room
-  }, [roomKey])
+  }, [roomKey, edits])
 
   const onChange = (next: RoomForm) => {
+    latest.current++ // anything still in flight was for the old room: drop it
+    setBusy('idle')
+    setDirty(true)
+    setEdits((n) => n + 1)
     setForm(next)
-    setView((v) => (v && v.rec ? { ...v, rec: null, layout: [] } : v)) // a new room needs a new search
+    setView((v) => (v ? { ...v, rec: null, layout: [] } : v)) // a new room needs a new search
   }
 
   async function findFurniture() {
@@ -67,6 +75,7 @@ export default function App() {
         layout: res.layout,
         rec: { candidates: res.candidates, searched: res.searched, sorted_by: res.sorted_by },
       })
+      setDirty(false)
     } catch (e) {
       if (mine === latest.current) setError(message(e))
     } finally {
@@ -93,7 +102,7 @@ export default function App() {
     }
   }
 
-  const stale = view !== null && roomKey !== '' && JSON.stringify(view.room) !== roomKey
+  const stale = dirty || busy !== 'idle'
   const candidates = (role: Role): Candidate[] => view?.rec?.candidates[role] ?? []
 
   return (
@@ -127,7 +136,7 @@ export default function App() {
           )}
           {view ? (
             <>
-              <FloorPlan room={view.room} plan={view.plan} stale={stale || busy !== 'idle'} />
+              <FloorPlan room={view.room} plan={view.plan} stale={stale} />
               {view.rec && <p className="sorted">Sorted by: {view.rec.sorted_by}</p>}
               <Verdict evaluation={view.plan.evaluation} />
               <CoverageMeter evaluation={view.plan.evaluation} />

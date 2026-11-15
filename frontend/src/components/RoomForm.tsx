@@ -74,11 +74,13 @@ export function RoomFormView({ form, errors, busy, onChange, onReset, onSubmit }
         </label>
       </div>
 
-      <div role="alert" className="errors">
-        {errors.map((e) => (
-          <p key={e}>{e}</p>
-        ))}
-      </div>
+      {bad && (
+        <div role="alert" className="errors">
+          {errors.map((e) => (
+            <p key={e}>{e}</p>
+          ))}
+        </div>
+      )}
 
       <div className="actions">
         <button type="submit" className="primary" disabled={bad || busy}>
