@@ -6,9 +6,11 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.beds import BedChoice, BedSize, label, sizes_that_fit
 from app.catalog import CatalogClient, CatalogError, Product
 from app.fit import Evaluation, Footprints, Zone, evaluate_layout, orient, zones_for
 from app.room import NO_FIT, Rect, Room, Slot, plan_room, public_slots
+from app.rules import COVERAGE_WARN
 from app.search import SEARCH_LIMIT, Role, build_query
 
 app = FastAPI(title="Room Fit")
@@ -95,6 +97,7 @@ def evaluate(req: EvaluateRequest) -> EvaluateResponse:
 
 class RecommendRequest(BaseModel):
     room: Room
+    bed_size: BedChoice = "auto"  # auto = the biggest size that suits the room
 
 
 class SearchStats(BaseModel):
@@ -115,6 +118,8 @@ class RecommendResponse(EvaluateResponse):
     sorted_by: str = "lowest price that fits"
     searched: dict[Role, SearchStats]
     candidates: dict[Role, list[Candidate]]  # every searched product per slot, cheapest first
+    bed_size: BedSize | None = None  # the size searched for the bed (None: no bed slot)
+    bed_size_reason: str | None = None
 
 
 def _fail_sizes(ev: Evaluation) -> dict[tuple[str, tuple[str, ...]], float]:
@@ -137,7 +142,10 @@ async def recommend(
 ) -> RecommendResponse:
     room = req.room
     plan = plan_room(room)
-    roles = [r for r in ROLES if plan.slots[r].fits]
+    wanted: set[Role] = {"bed", *room.needs}
+    if "desk" in wanted:
+        wanted.add("desk_chair")
+    roles = [r for r in ROLES if r != "bed" and r in wanted and plan.slots[r].fits]
 
     async def search(role: Role) -> list[Product]:
         sp = plan.slots[role]
@@ -146,7 +154,7 @@ async def recommend(
         )
 
     try:
-        results = dict(
+        results: dict[Role, list[Product]] = dict(
             zip(roles, await asyncio.gather(*(search(r) for r in roles)), strict=True)
         )
     except CatalogError as e:
@@ -170,22 +178,60 @@ async def recommend(
     baseline = _fail_sizes(
         evaluate_layout(room, {})[2]
     )  # fails with no furniture at all
-    # desk last: the chair's 18 in behind-clearance depends on what is already placed
-    for role in ("bed", "nightstand", "dresser", "desk"):
-        if role not in results:
-            continue
-        sized = [p for p in results[role] if p.dimensions is not None]
+
+    def pick(role: Role, products: list[Product]) -> None:
+        """Take the cheapest listing that fits the slot, adds no hard fail and keeps coverage ok."""
+        sized = [p for p in products if p.dimensions is not None]
         fitting = [p for p in sized if fits_slot(role, p)]
         stats[role] = SearchStats(
-            found=len(results[role]), with_dimensions=len(sized), fit_slot=len(fitting)
+            found=len(products), with_dimensions=len(sized), fit_slot=len(fitting)
         )
         for p in cheapest_first(fitting):
             assert p.dimensions is not None
             trial = {**fp, role: orient(p.dimensions)}
-            if not _worse_than(evaluate_layout(room, trial)[2], baseline):
+            ev = evaluate_layout(room, trial)[2]
+            if not _worse_than(ev, baseline) and (
+                role != "bed" or ev.coverage_pct <= COVERAGE_WARN
+            ):
                 fp[role] = trial[role]
                 chosen.append(LayoutItem(slot_id=role, product=p))
+                return
+
+    # bed first, in the biggest size that suits the room (or the size the renter asked for)
+    bed_size: BedSize | None = None
+    bed_reason: str | None = None
+    bed_slot = plan.slots["bed"]
+    if bed_slot.fits:
+        if req.bed_size == "auto":
+            sizes: list[BedSize] = sizes_that_fit(
+                bed_slot.max_along, bed_slot.max_across
+            ) or ["twin_xl"]
+        else:
+            sizes = [req.bed_size]
+        for size in sizes:
+            found = await catalog.search(
+                build_query("bed", (bed_slot.max_along, bed_slot.max_across), label(size)),
+                SEARCH_LIMIT,
+            )
+            results["bed"] = found
+            bed_size = size
+            pick("bed", found)
+            if "bed" in fp:
                 break
+        if req.bed_size != "auto":
+            bed_reason = f"{label(bed_size)}: the size you chose" if bed_size else None
+        elif bed_size and "bed" in fp:
+            top = sizes[0]
+            bed_reason = (
+                f"{label(bed_size)}: the biggest size that fits this room"
+                if bed_size == top
+                else f"{label(bed_size)}: {label(top)} was too big for every listing found"
+            )
+
+    # desk last: the chair's 18 in behind-clearance depends on what is already placed
+    for role in ("nightstand", "dresser", "desk"):
+        if role in results:
+            pick(role, results[role])
     if (
         "desk" in fp and "desk_chair" in results
     ):  # chair size is assumed, so any chair will do
@@ -201,6 +247,7 @@ async def recommend(
                     slot_id="desk_chair", product=chairs[0], footprint_basis="assumed"
                 )
             )
+    chosen.sort(key=lambda it: ROLES.index(it.slot_id))
 
     def why(role: Role) -> str:
         st = stats.get(role)
@@ -215,7 +262,7 @@ async def recommend(
     unplaceable = [
         Unplaced(slot_id=r, reason=why(r))
         for r in ROLES
-        if r not in fp and r != "desk_chair"
+        if r not in fp and r != "desk_chair" and r in wanted
     ]
     base = _evaluate(room, chosen)
     candidates = {
@@ -228,4 +275,6 @@ async def recommend(
         layout=chosen,
         searched=stats,
         candidates=candidates,
+        bed_size=bed_size,
+        bed_size_reason=bed_reason,
     )

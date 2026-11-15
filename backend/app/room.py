@@ -18,10 +18,14 @@ from app.rules import (
     CHAIR_BACK,
     EPS,
     FRONT_CLEARANCE,
+    MIN_FOOTPRINT,
     PATH_END_FRACTION,
     PATH_WIDTH,
 )
 from app.search import Role
+
+Need = Literal["nightstand", "dresser", "desk"]  # the bed is always needed
+ALL_NEEDS: tuple[Need, ...] = ("nightstand", "dresser", "desk")
 
 Wall = Literal["top", "bottom", "left", "right"]
 
@@ -75,6 +79,7 @@ class Room(BaseModel):
     door: Door
     window: Window | None = None
     closet: Rect | None = None  # fixed, not for sale
+    needs: list[Need] = Field(default_factory=lambda: list(ALL_NEEDS))  # pieces the renter wants
 
     @model_validator(mode="after")
     def _inside(self) -> "Room":
@@ -161,7 +166,10 @@ class SlotPlan:
 
     @property
     def fits(self) -> bool:
-        return self.max_along > EPS and self.max_across > EPS
+        least_along, least_across = MIN_FOOTPRINT[self.role]
+        return (
+            self.max_along + EPS >= least_along and self.max_across + EPS >= least_across
+        )
 
 
 @dataclass
@@ -175,6 +183,9 @@ class Plan:
     closet_front_dir: str  # "+y" | "-y" | "+x" | "-x": which way the closet faces
     bed_side: Literal["left", "right"]
     slots: dict[Role, SlotPlan]
+    needs: frozenset[str] = frozenset(ALL_NEEDS)
+    desk_on_top: bool = False  # desk on the door wall, beside the dresser (chair below it)
+    notes: dict[Role, str] | None = None
 
 
 class Slot(BaseModel):
@@ -237,7 +248,7 @@ def _closet_front(c: Rect, W: float, D: float) -> tuple[Rect, str]:
     return Rect(x=c.x, y=c.y2, w=c.w, d=f), "+y"
 
 
-def plan_room(room: Room) -> Plan:
+def _plan(room: Room, side_pick: Literal["left", "right"] | None, desk_top: bool) -> Plan:
     fr = Frame(room)
     W, D = fr.W, fr.D
 
@@ -261,7 +272,7 @@ def plan_room(room: Room) -> Plan:
     obstacles = [r for r in (closet, front) if r]
 
     left_w, right_w = lane.x, W - lane.x2
-    side: Literal["left", "right"] = "right" if right_w >= left_w else "left"
+    side: Literal["left", "right"] = side_pick or ("right" if right_w >= left_w else "left")
     right = side == "right"
     zone_w = right_w if right else left_w
     bed_wall_x, other_wall_x = (W, 0.0) if right else (0.0, W)
@@ -280,28 +291,44 @@ def plan_room(room: Room) -> Plan:
         "bed", reg, "y", (bed_wall_x, D), -1, -1 if right else 1, reg.d, reg.w
     )
 
-    # desk: bottom corner of the other side, long side along that wall, chair pulled out in front
-    # (chair + 18 in behind it may overlap the lane, which is empty space)
-    chair_across = CHAIR_ASSUMED[1]
-    span = abs(bed_inner_x - other_wall_x) - chair_across - CHAIR_BACK
-    span = max(span, 0.0)
-    desk_x = 0.0 if other_wall_x == 0 else W - span
-    reg = _avoid(
-        Rect(x=desk_x, y=lane.y2, w=span, d=below),
-        -1 if other_wall_x == 0 else 1,
-        1,
-        obstacles,
-    )
-    slots["desk"] = SlotPlan(
-        "desk",
-        reg,
-        "y",
-        (other_wall_x, D),
-        -1,
-        1 if other_wall_x == 0 else -1,
-        reg.d,
-        reg.w,
-    )
+    half = zone_w / 2
+    if desk_top:
+        # fallback: the far side is too narrow, so the desk shares the door wall with the dresser:
+        # the dresser takes the half by the wall, the desk the half by the lane, chair below it
+        # (its 18 in behind it stays above the bed)
+        dx = lane.x2 if right else lane.x - half
+        reg = _avoid(
+            Rect(x=dx, y=0, w=half, d=max(lane.y2 - CHAIR_ASSUMED[0] - CHAIR_BACK, 0)),
+            -1 if right else 1,
+            -1,
+            obstacles,
+        )
+        slots["desk"] = SlotPlan(
+            "desk", reg, "x", (lane.x2 if right else lane.x, 0), 1 if right else -1, 1, reg.w, reg.d
+        )
+    else:
+        # desk: bottom corner of the other side, long side along that wall, chair pulled out in front
+        # (chair + 18 in behind it may overlap the lane, which is empty space)
+        chair_across = CHAIR_ASSUMED[1]
+        span = abs(bed_inner_x - other_wall_x) - chair_across - CHAIR_BACK
+        span = max(span, 0.0)
+        desk_x = 0.0 if other_wall_x == 0 else W - span
+        reg = _avoid(
+            Rect(x=desk_x, y=lane.y2, w=span, d=below),
+            -1 if other_wall_x == 0 else 1,
+            1,
+            obstacles,
+        )
+        slots["desk"] = SlotPlan(
+            "desk",
+            reg,
+            "y",
+            (other_wall_x, D),
+            -1,
+            1 if other_wall_x == 0 else -1,
+            reg.d,
+            reg.w,
+        )
     chair_region = Rect(x=0, y=0, w=0, d=0)
     slots["desk_chair"] = SlotPlan(
         "desk_chair",
@@ -317,9 +344,9 @@ def plan_room(room: Room) -> Plan:
     # dresser: top wall on the bed's side of the lane, front clearance stays above the bed zone
     reg = _avoid(
         Rect(
-            x=lane.x2 if right else 0,
+            x=(W - half if right else 0) if desk_top else (lane.x2 if right else 0),
             y=0,
-            w=zone_w,
+            w=half if desk_top else zone_w,
             d=max(lane.y2 - FRONT_CLEARANCE, 0),
         ),
         1 if right else -1,
@@ -342,7 +369,40 @@ def plan_room(room: Room) -> Plan:
     if not slots["desk"].fits:
         slots["desk_chair"].max_along = slots["desk_chair"].max_across = 0.0
 
-    return Plan(fr, W, D, lane, closet, front, front_dir, side, slots)
+    notes: dict[Role, str] = {}
+    if desk_top and slots["desk"].fits:
+        notes["desk"] = "on the door wall: the far side of the room has no space for a desk"
+    return Plan(
+        fr, W, D, lane, closet, front, front_dir, side, slots,
+        needs=frozenset(room.needs), desk_on_top=desk_top, notes=notes,
+    )
+
+
+def _fit_count(room: Room, plan: Plan) -> int:
+    wanted = {"bed", *room.needs}
+    return sum(plan.slots[r].fits for r in wanted)  # type: ignore[index]
+
+
+def plan_room(room: Room) -> Plan:
+    """The default layout, or a variant when the default leaves a wanted piece without space.
+
+    Variants, in order: bed and desk swapped to the other side; the desk moved to the door wall
+    (beside the dresser); both. The first variant with strictly more pieces fitting wins.
+    """
+    best = _plan(room, None, False)
+    best_n = _fit_count(room, best)
+    wanted = len(room.needs) + 1
+    other: Literal["left", "right"] = "left" if best.bed_side == "right" else "right"
+    for side, top in ((other, False), (best.bed_side, True), (other, True)):
+        if best_n >= wanted:
+            break
+        trial = _plan(room, side, top)
+        n = _fit_count(room, trial)
+        if n > best_n:
+            best, best_n = trial, n
+    if best.bed_side != _plan(room, None, False).bed_side:
+        best.notes = {**(best.notes or {}), "bed": "on the other side of the door: it fits better there"}
+    return best
 
 
 NO_FIT = {
@@ -367,7 +427,7 @@ def public_slots(room: Room, plan: Plan | None = None) -> list[Slot]:
                 max_footprint=(round(sp.max_along, 2), round(sp.max_across, 2)),
                 fits=sp.fits,
                 assumed_footprint=role == "desk_chair",
-                note=None if sp.fits else NO_FIT[role],
+                note=NO_FIT[role] if not sp.fits else (plan.notes or {}).get(role),
             )
         )
     return out

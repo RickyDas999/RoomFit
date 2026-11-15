@@ -113,10 +113,13 @@ def test_tiny_room_has_slots_that_cannot_hold_anything_useful() -> None:
 
 
 def test_closet_inside_a_slot_region_shrinks_it() -> None:
-    # closet in the bed's corner: the bed region must stop short of it
+    # closet in the bed's corner: the planner moves the bed to the free side, and no slot
+    # region overlaps the closet
     room = SAMPLE_ROOM.model_copy(update={"closet": Rect(x=100, y=150, w=44, d=42)})
-    bed = next(s for s in public_slots(room) if s.role == "bed")
-    assert bed.max_footprint[0] < 96
+    closet = room.closet
+    assert closet
+    for s in public_slots(room):
+        assert not s.region.intersects(closet) or s.region.area == 0
 
 
 @pytest.mark.parametrize(

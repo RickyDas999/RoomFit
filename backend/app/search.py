@@ -9,14 +9,16 @@ SEARCH_LIMIT = 25  # handoff section 6: 25-50 per search
 QUERY_SIZE_CAP = {"desk": 60, "dresser": 48}
 
 
-def build_query(role: Role, max_footprint: tuple[float, float]) -> str:
+def build_query(
+    role: Role, max_footprint: tuple[float, float], bed_label: str | None = None
+) -> str:
     """max_footprint is (width, depth) in inches.
 
     Wording is a placeholder from the handoff examples; M3 refines it.
     """
     width = int(min(max_footprint[0], QUERY_SIZE_CAP.get(role, max_footprint[0])))
     if role == "bed":
-        return "twin xl bed frame"
+        return f"{(bed_label or 'Twin XL').lower()} bed frame"
     if role == "desk":
         return f"desk {width} inch"
     if role == "desk_chair":

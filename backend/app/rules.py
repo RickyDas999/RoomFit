@@ -20,3 +20,13 @@ CHAIR_ASSUMED = (
 )  # desk chairs rarely list dimensions: assumed, labeled in the UI
 
 EPS = 1e-9  # float slack so "exactly 18 in" passes
+
+# --- Smallest realistic piece per slot (along, across). A slot with less space than this counts
+# as "nothing fits" (a 2 in wide bed slot is not a bed slot). Our own numbers, to confirm. ---
+MIN_FOOTPRINT = {
+    "bed": (72.0, 36.0),
+    "desk": (24.0, 16.0),
+    "desk_chair": (20.0, 20.0),
+    "dresser": (18.0, 10.0),
+    "nightstand": (10.0, 10.0),
+}
