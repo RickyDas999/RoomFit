@@ -121,7 +121,9 @@ def test_parses_product() -> None:
     assert p.native_checkout is True
     assert p.image_url == "https://img.example/1.jpg"
     assert p.description == 'Desk 40"W x 20"D Sturdy'
-    assert p.dimensions is None and p.dimension_source is None
+    assert p.dimensions is not None
+    assert (p.dimensions.w, p.dimensions.d, p.dimensions.h) == (40, 20, None)
+    assert p.dimension_status == "parsed" and p.dimension_source == '40"W x 20"D'
 
 
 def test_parse_skips_unusable_products() -> None:
