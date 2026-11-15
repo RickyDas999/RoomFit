@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, evaluate, recommend } from './api/client'
-import type { Candidate, EvaluateResponse, LayoutItem, Product, RecommendResponse, Role, Room } from './api/types'
+import type { Candidate, EvaluateResponse, LayoutItem, Need, Product, RecommendResponse, Role, Room } from './api/types'
 import { ROLES } from './api/types'
 import { CoverageMeter, FlagsList, Verdict } from './components/Flags'
 import { FloorPlan } from './components/FloorPlan'
@@ -13,8 +13,12 @@ interface View {
   room: Room
   plan: EvaluateResponse
   layout: LayoutItem[]
-  rec: Pick<RecommendResponse, 'candidates' | 'searched' | 'sorted_by'> | null
+  rec: Pick<RecommendResponse, 'candidates' | 'searched' | 'sorted_by' | 'bed_size_reason'> | null
 }
+
+/** The bed is always wanted; the chair goes with the desk. */
+const wanted = (role: Role, form: RoomForm) =>
+  role === 'bed' || form.needs.includes(role === 'desk_chair' ? 'desk' : (role as Need))
 
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Something went wrong. Try again.')
 
@@ -67,13 +71,13 @@ export default function App() {
     setBusy('searching')
     setError(null)
     try {
-      const res = await recommend(room)
+      const res = await recommend(room, form.bedSize)
       if (mine !== latest.current) return
       setView({
         room,
         plan: { slots: res.slots, placed: res.placed, evaluation: res.evaluation, zones: res.zones, unplaced: res.unplaced },
         layout: res.layout,
-        rec: { candidates: res.candidates, searched: res.searched, sorted_by: res.sorted_by },
+        rec: { candidates: res.candidates, searched: res.searched, sorted_by: res.sorted_by, bed_size_reason: res.bed_size_reason },
       })
       setDirty(false)
     } catch (e) {
@@ -151,7 +155,7 @@ export default function App() {
           <h2>Furniture</h2>
           {view?.rec === null && view.layout.length === 0 && <p className="hint">Press “Find furniture that fits” to search for real products.</p>}
           {view &&
-            ROLES.map((role) => {
+            ROLES.filter((r) => wanted(r, form)).map((role) => {
               const slot = view.plan.slots.find((s) => s.role === role)
               if (!slot) return null
               return (
@@ -160,6 +164,7 @@ export default function App() {
                   slot={slot}
                   item={view.layout.find((i) => i.slot_id === role)}
                   unplacedReason={view.plan.unplaced.find((u) => u.slot_id === role)?.reason}
+                  explain={role === 'bed' ? view.rec?.bed_size_reason : null}
                   candidates={candidates(role)}
                   busy={busy !== 'idle'}
                   onSwap={(p) => swap(role, p)}

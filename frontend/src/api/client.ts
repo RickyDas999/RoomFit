@@ -1,4 +1,4 @@
-import type { EvaluateResponse, LayoutItem, RecommendResponse, Room } from './types'
+import type { BedChoice, EvaluateResponse, LayoutItem, RecommendResponse, Room } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -43,6 +43,6 @@ export function evaluate(room: Room, layout: LayoutItem[]): Promise<EvaluateResp
 }
 
 /** Search the catalog for each slot and pick the cheapest set that fits. Takes a few seconds. */
-export function recommend(room: Room): Promise<RecommendResponse> {
-  return post('/api/recommend', { room })
+export function recommend(room: Room, bedSize: BedChoice = 'auto'): Promise<RecommendResponse> {
+  return post('/api/recommend', { room, bed_size: bedSize })
 }

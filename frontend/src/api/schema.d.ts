@@ -207,10 +207,20 @@ export interface components {
         };
         /** RecommendRequest */
         RecommendRequest: {
+            /**
+             * Bed Size
+             * @default auto
+             * @enum {string}
+             */
+            bed_size: "auto" | "twin_xl" | "full" | "queen" | "king";
             room: components["schemas"]["Room"];
         };
         /** RecommendResponse */
         RecommendResponse: {
+            /** Bed Size */
+            bed_size?: ("twin_xl" | "full" | "queen" | "king") | null;
+            /** Bed Size Reason */
+            bed_size_reason?: string | null;
             /** Candidates */
             candidates: {
                 [key: string]: components["schemas"]["Candidate"][];
@@ -255,6 +265,8 @@ export interface components {
             /** Depth */
             depth: number;
             door: components["schemas"]["Door"];
+            /** Needs */
+            needs?: ("nightstand" | "dresser" | "desk")[];
             /** Width */
             width: number;
             window?: components["schemas"]["Window"] | null;

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RoomFormView } from './RoomForm'
 import { SAMPLE_FORM, validate, type RoomForm } from '../room'
@@ -79,5 +79,44 @@ describe('RoomFormView', () => {
     const { onReset } = setup({ ...SAMPLE_FORM, width: 100 })
     fireEvent.click(screen.getByRole('button', { name: 'Use the sample room' }))
     expect(onReset).toHaveBeenCalledTimes(1)
+  })
+
+  it('picks an example: fills the whole form from the preset', () => {
+    const { onChange } = setup()
+    fireEvent.change(screen.getByLabelText('Start from an example'), { target: { value: 'small' } })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ width: 120, depth: 168, needs: ['nightstand', 'dresser'] }))
+  })
+
+  it('shows the matching example and its blurb, or "Custom room" once the form is changed', () => {
+    setup()
+    expect(screen.getByLabelText('Start from an example')).toHaveValue('starter')
+    expect(screen.getByText(/12 x 16 ft with a closet/)).toBeInTheDocument()
+    cleanup()
+    setup({ ...SAMPLE_FORM, width: 150 })
+    expect(screen.getByLabelText('Start from an example')).toHaveValue('')
+  })
+
+  it('has a "What do you need?" group: the bed is always on, the others toggle', () => {
+    const { onChange } = setup()
+    const group = screen.getByRole('group', { name: 'What do you need?' })
+    expect(within(group).getByRole('checkbox', { name: /Bed/ })).toBeDisabled()
+    fireEvent.click(within(group).getByRole('checkbox', { name: 'Dresser' }))
+    expect(onChange).toHaveBeenCalledWith({ ...SAMPLE_FORM, needs: ['nightstand', 'desk'] })
+    fireEvent.click(within(group).getByRole('checkbox', { name: 'Desk and chair' }))
+    expect(onChange).toHaveBeenLastCalledWith({ ...SAMPLE_FORM, needs: ['nightstand', 'dresser'] })
+  })
+
+  it('turning a need back on keeps the canonical order', () => {
+    const { onChange } = setup({ ...SAMPLE_FORM, needs: ['desk'] })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Nightstand' }))
+    expect(onChange).toHaveBeenCalledWith({ ...SAMPLE_FORM, needs: ['nightstand', 'desk'] })
+  })
+
+  it('has a bed size choice, auto by default', () => {
+    const { onChange } = setup()
+    const select = screen.getByLabelText('Bed size')
+    expect(select).toHaveValue('auto')
+    fireEvent.change(select, { target: { value: 'queen' } })
+    expect(onChange).toHaveBeenCalledWith({ ...SAMPLE_FORM, bedSize: 'queen' })
   })
 })

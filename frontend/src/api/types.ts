@@ -14,6 +14,8 @@ export type EvaluateResponse = S['EvaluateResponse']
 export type RecommendResponse = S['RecommendResponse']
 export type Role = S['Slot']['role']
 export type Wall = S['Door']['wall']
+export type Need = NonNullable<Room['needs']>[number]
+export type BedChoice = S['RecommendRequest']['bed_size'] & string
 
 /** Slot order in the side panel (the order the engine plans them). */
 export const ROLES: Role[] = ['bed', 'desk', 'desk_chair', 'dresser', 'nightstand']
