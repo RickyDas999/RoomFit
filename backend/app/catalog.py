@@ -20,7 +20,7 @@ from app.search import SEARCH_LIMIT
 
 TOKEN_URL = "https://api.shopify.com/auth/access_token"
 CATALOG_URL = "https://catalog.shopify.com/api/ucp/mcp"
-PROFILE_URL = "https://raw.githubusercontent.com/RickyDas999/RoomFit/main/agent-profile/ucp-profile.json"
+PROFILE_URL = "https://cdn.jsdelivr.net/gh/RickyDas999/RoomFit@main/agent-profile/ucp-profile.json"
 COUNTRY = "US"  # prototype: hard-coded (Ricky, Nov 15)
 TOKEN_TTL = 55 * 60  # tokens last 60 min; refresh a bit early
 MIN_INTERVAL = 0.2  # 5 requests/second limit
