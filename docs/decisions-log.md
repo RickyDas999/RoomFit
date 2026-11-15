@@ -47,3 +47,5 @@ Running record of decisions we are going forward with. Newest last. Replaces `do
 | 2026-11-16 | M4a: `fastapi` (0.163.0) and `pydantic` (2.14.3) are pinned, because the committed `backend/openapi.json` and its freshness test depend on the exact schema they generate. Bump them together and rerun `python -m scripts.dump_openapi`. | Claude, from M4a review; confirmed by Ricky |
 | 2026-11-16 | M4a: zone rectangles are clipped to the room (a zone entirely outside is dropped). | Claude, from M4a review |
 | 2026-11-16 | M4a: response size (~297 KB, mostly product descriptions) is left as is for now; trim descriptions or add compression later if it matters. | Ricky |
+| 2026-11-16 | M4: the room form's closet "yes" puts a 48 x 24 in closet in the corner at the start of the door wall (matches the sample room). | Ricky |
+| 2026-11-16 | M4: plain CSS, no UI library; clarity over polish. | Ricky |
