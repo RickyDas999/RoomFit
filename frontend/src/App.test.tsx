@@ -5,7 +5,7 @@ import App from './App'
 afterEach(() => vi.unstubAllGlobals())
 
 test('shows the health response', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ status: 'ok' }) }))
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'ok' }) }))
   render(<App />)
   expect(await screen.findByText('Backend health: ok')).toBeInTheDocument()
 })

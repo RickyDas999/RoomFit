@@ -5,7 +5,10 @@ export default function App() {
 
   useEffect(() => {
     fetch('/api/health')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status))
+        return r.json()
+      })
       .then((d: { status: string }) => setHealth(d.status))
       .catch(() => setHealth('backend unreachable'))
   }, [])
