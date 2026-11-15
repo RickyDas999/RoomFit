@@ -10,11 +10,12 @@ import os
 import re
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel
 
+from app.dimensions import Dimensions, parse_dimensions
 from app.search import SEARCH_LIMIT
 
 TOKEN_URL = "https://api.shopify.com/auth/access_token"
@@ -62,8 +63,10 @@ class Product(BaseModel):
     url: str | None
     native_checkout: bool
     description: str  # plain text; M2's parser reads this
-    dimensions: None = None  # filled by the M2 parser
-    dimension_source: None = None
+    dimensions: Dimensions | None = None  # W x D x H in inches, from the M2 parser
+    dimension_source: str | None = None  # matched text snippet
+    dimension_status: Literal["parsed", "ambiguous", "missing"] = "missing"
+    dimension_reason: str | None = None  # why not "parsed" (see dimensions.Reason)
 
 
 def _plain(text: str) -> str:
@@ -75,29 +78,47 @@ def parse_product(raw: dict[str, Any]) -> Product | None:
     """Parse one catalog product. Returns None if it is unusable (never raises)."""
     try:
         v = next(
-            (v for v in raw.get("variants") or [] if v.get("price") and v.get("seller")), None
+            (
+                v
+                for v in raw.get("variants") or []
+                if v.get("price") and v.get("seller")
+            ),
+            None,
         )
         if v is None:
             return None
         price, seller = v["price"], v["seller"]
         media = raw.get("media") or []
-        desc = (raw.get("description") or {}).get("html") or (v.get("description") or {}).get(
-            "plain", ""
-        )
+        desc = (raw.get("description") or {}).get("html") or (
+            v.get("description") or {}
+        ).get("plain", "")
+        text = _plain(desc)
+        dims = parse_dimensions(text)
         return Product(
             id=raw["id"],
             variant_id=v["id"],
             title=raw.get("title", ""),
             shop=Shop(
-                id=seller["id"], name=seller.get("name", ""), domain=seller.get("domain", "")
+                id=seller["id"],
+                name=seller.get("name", ""),
+                domain=seller.get("domain", ""),
             ),
             price=Price(amount=price["amount"], currency=price["currency"]),
             image_url=media[0].get("url") if media else None,
             url=raw.get("url"),
             native_checkout=bool((v.get("eligible") or {}).get("native_checkout")),
-            description=_plain(desc),
+            description=text,
+            dimensions=dims.dimensions,
+            dimension_source=dims.source,
+            dimension_status=dims.status,
+            dimension_reason=dims.reason,
         )
-    except (KeyError, TypeError, ValueError, AttributeError):  # ValueError covers pydantic
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        AttributeError,
+    ):  # ValueError covers pydantic
         return None
 
 
@@ -123,9 +144,13 @@ class CatalogClient:
     @classmethod
     def from_env(cls) -> "CatalogClient":
         try:
-            return cls(os.environ["SHOPIFY_CLIENT_ID"], os.environ["SHOPIFY_CLIENT_SECRET"])
+            return cls(
+                os.environ["SHOPIFY_CLIENT_ID"], os.environ["SHOPIFY_CLIENT_SECRET"]
+            )
         except KeyError as e:
-            raise CatalogError(f"missing env var {e.args[0]} (see backend/.env.example)") from None
+            raise CatalogError(
+                f"missing env var {e.args[0]} (see backend/.env.example)"
+            ) from None
 
     async def _get_token(self) -> str:
         async with self._token_lock:  # concurrent searches share one token fetch
@@ -168,7 +193,10 @@ class CatalogClient:
                     "meta": {"ucp-agent": {"profile": PROFILE_URL}},
                     "catalog": {
                         "query": query,
-                        "filters": {"ships_to": {"country": COUNTRY}, "available": True},
+                        "filters": {
+                            "ships_to": {"country": COUNTRY},
+                            "available": True,
+                        },
                         "context": {"address_country": COUNTRY},
                         "pagination": {"limit": limit},
                     },
