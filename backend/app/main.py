@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.catalog import CatalogClient, CatalogError, Product
-from app.fit import Evaluation, Footprints, evaluate_layout, orient
+from app.fit import Evaluation, Footprints, Zone, evaluate_layout, orient, zones_for
 from app.room import NO_FIT, Rect, Room, Slot, plan_room, public_slots
 from app.search import SEARCH_LIMIT, Role, build_query
 
@@ -52,6 +52,7 @@ class EvaluateResponse(BaseModel):
     slots: list[Slot]
     placed: dict[Role, Rect]  # original room coordinates
     evaluation: Evaluation
+    zones: list[Zone]  # clearance areas to shade, original room coordinates
     unplaced: list[Unplaced]
 
 
@@ -79,6 +80,10 @@ def _evaluate(room: Room, layout: list[LayoutItem]) -> EvaluateResponse:
         slots=public_slots(room, plan),
         placed={r: plan.frame.rect_back(rect) for r, rect in placed.items()},
         evaluation=ev,
+        zones=[
+            z.model_copy(update={"rect": plan.frame.rect_back(z.rect)})
+            for z in zones_for(plan, placed, ev)
+        ],
         unplaced=unplaced,
     )
 
@@ -98,10 +103,22 @@ class SearchStats(BaseModel):
     fit_slot: int
 
 
+class Candidate(BaseModel):
+    """A searched product the UI may offer as a swap."""
+
+    product: Product
+    fits_slot: (
+        bool  # parsed dimensions that fit the slot's space (rules are checked on swap)
+    )
+
+
 class RecommendResponse(EvaluateResponse):
     layout: list[LayoutItem]
     sorted_by: str = "lowest price that fits"
     searched: dict[Role, SearchStats]
+    candidates: dict[
+        Role, list[Candidate]
+    ]  # every searched product per slot, cheapest first
 
 
 def _fail_sizes(ev: Evaluation) -> dict[tuple[str, tuple[str, ...]], float]:
@@ -142,6 +159,15 @@ async def recommend(
     def cheapest_first(ps: list[Product]) -> list[Product]:
         return sorted(ps, key=lambda p: (p.price.amount, p.title, p.id))
 
+    def fits_slot(role: Role, p: Product) -> bool:
+        if role == "desk_chair":
+            return True  # the chair's footprint is assumed
+        sp = plan.slots[role]
+        if p.dimensions is None:
+            return False
+        along, across = orient(p.dimensions)
+        return along <= sp.max_along + 1e-9 and across <= sp.max_across + 1e-9
+
     fp: Footprints = {}
     chosen: list[LayoutItem] = []
     stats: dict[Role, SearchStats] = {}
@@ -152,15 +178,8 @@ async def recommend(
     for role in ("bed", "nightstand", "dresser", "desk"):
         if role not in results:
             continue
-        sp = plan.slots[role]
         sized = [p for p in results[role] if p.dimensions is not None]
-        fitting = [
-            p
-            for p in sized
-            if p.dimensions
-            and orient(p.dimensions)[0] <= sp.max_along + 1e-9
-            and orient(p.dimensions)[1] <= sp.max_across + 1e-9
-        ]
+        fitting = [p for p in sized if fits_slot(role, p)]
         stats[role] = SearchStats(
             found=len(results[role]), with_dimensions=len(sized), fit_slot=len(fitting)
         )
@@ -203,9 +222,17 @@ async def recommend(
         if r not in fp and r != "desk_chair"
     ]
     base = _evaluate(room, chosen)
+    candidates = {
+        r: [
+            Candidate(product=p, fits_slot=fits_slot(r, p))
+            for p in cheapest_first(results.get(r, []))
+        ]
+        for r in ROLES
+    }
     return RecommendResponse(
         **base.model_dump(exclude={"unplaced"}),
         unplaced=unplaceable,
         layout=chosen,
         searched=stats,
+        candidates=candidates,
     )

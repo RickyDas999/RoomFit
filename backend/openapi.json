@@ -1,0 +1,977 @@
+{
+  "components": {
+    "schemas": {
+      "Candidate": {
+        "description": "A searched product the UI may offer as a swap.",
+        "properties": {
+          "fits_slot": {
+            "title": "Fits Slot",
+            "type": "boolean"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          }
+        },
+        "required": [
+          "product",
+          "fits_slot"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
+      "Dimensions": {
+        "properties": {
+          "d": {
+            "exclusiveMinimum": 0.0,
+            "title": "D",
+            "type": "number"
+          },
+          "h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "H"
+          },
+          "w": {
+            "exclusiveMinimum": 0.0,
+            "title": "W",
+            "type": "number"
+          }
+        },
+        "required": [
+          "w",
+          "d"
+        ],
+        "title": "Dimensions",
+        "type": "object"
+      },
+      "Door": {
+        "properties": {
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "number"
+          },
+          "swing": {
+            "default": "in",
+            "enum": [
+              "in",
+              "out"
+            ],
+            "title": "Swing",
+            "type": "string"
+          },
+          "wall": {
+            "enum": [
+              "top",
+              "bottom",
+              "left",
+              "right"
+            ],
+            "title": "Wall",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "wall",
+          "offset",
+          "width"
+        ],
+        "title": "Door",
+        "type": "object"
+      },
+      "EvaluateRequest": {
+        "properties": {
+          "layout": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutItem"
+            },
+            "title": "Layout",
+            "type": "array"
+          },
+          "room": {
+            "$ref": "#/components/schemas/Room"
+          }
+        },
+        "required": [
+          "room",
+          "layout"
+        ],
+        "title": "EvaluateRequest",
+        "type": "object"
+      },
+      "EvaluateResponse": {
+        "properties": {
+          "evaluation": {
+            "$ref": "#/components/schemas/Evaluation"
+          },
+          "placed": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Rect"
+            },
+            "propertyNames": {
+              "enum": [
+                "bed",
+                "desk",
+                "desk_chair",
+                "dresser",
+                "nightstand"
+              ]
+            },
+            "title": "Placed",
+            "type": "object"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/Slot"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "unplaced": {
+            "items": {
+              "$ref": "#/components/schemas/Unplaced"
+            },
+            "title": "Unplaced",
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/Zone"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "slots",
+          "placed",
+          "evaluation",
+          "zones",
+          "unplaced"
+        ],
+        "title": "EvaluateResponse",
+        "type": "object"
+      },
+      "Evaluation": {
+        "properties": {
+          "coverage_pct": {
+            "title": "Coverage Pct",
+            "type": "number"
+          },
+          "coverage_status": {
+            "enum": [
+              "ok",
+              "warn",
+              "flag"
+            ],
+            "title": "Coverage Status",
+            "type": "string"
+          },
+          "hard_fails": {
+            "items": {
+              "$ref": "#/components/schemas/HardFail"
+            },
+            "title": "Hard Fails",
+            "type": "array"
+          },
+          "missing_needs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Needs",
+            "type": "array"
+          },
+          "verdict": {
+            "enum": [
+              "fits",
+              "cramped",
+              "incomplete"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hard_fails",
+          "coverage_pct",
+          "coverage_status",
+          "missing_needs",
+          "verdict"
+        ],
+        "title": "Evaluation",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HardFail": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "pieces": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pieces",
+            "type": "array"
+          },
+          "rule": {
+            "enum": [
+              "path_from_door",
+              "bed_open_side",
+              "in_front_of_dresser",
+              "in_front_of_closet",
+              "behind_desk_chair",
+              "overlap",
+              "outside_room"
+            ],
+            "title": "Rule",
+            "type": "string"
+          },
+          "short_in": {
+            "title": "Short In",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rule",
+          "pieces",
+          "short_in",
+          "message"
+        ],
+        "title": "HardFail",
+        "type": "object"
+      },
+      "LayoutItem": {
+        "properties": {
+          "footprint_basis": {
+            "default": "parsed",
+            "enum": [
+              "parsed",
+              "assumed"
+            ],
+            "title": "Footprint Basis",
+            "type": "string"
+          },
+          "product": {
+            "$ref": "#/components/schemas/Product"
+          },
+          "slot_id": {
+            "enum": [
+              "bed",
+              "desk",
+              "desk_chair",
+              "dresser",
+              "nightstand"
+            ],
+            "title": "Slot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "product"
+        ],
+        "title": "LayoutItem",
+        "type": "object"
+      },
+      "Price": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "Price",
+        "type": "object"
+      },
+      "Product": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "dimension_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no_dimensions",
+                  "no_unit",
+                  "shipping_size",
+                  "mattress_size",
+                  "component_only",
+                  "range",
+                  "incomplete",
+                  "multiple_sizes",
+                  "conflicting_labels",
+                  "implausible",
+                  "quantity",
+                  "too_many_values"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Reason"
+          },
+          "dimension_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Source"
+          },
+          "dimension_status": {
+            "default": "missing",
+            "enum": [
+              "parsed",
+              "ambiguous",
+              "missing"
+            ],
+            "title": "Dimension Status",
+            "type": "string"
+          },
+          "dimensions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dimensions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "native_checkout": {
+            "title": "Native Checkout",
+            "type": "boolean"
+          },
+          "price": {
+            "$ref": "#/components/schemas/Price"
+          },
+          "shop": {
+            "$ref": "#/components/schemas/Shop"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "variant_id": {
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "variant_id",
+          "title",
+          "shop",
+          "price",
+          "image_url",
+          "url",
+          "native_checkout",
+          "description"
+        ],
+        "title": "Product",
+        "type": "object"
+      },
+      "RecommendRequest": {
+        "properties": {
+          "room": {
+            "$ref": "#/components/schemas/Room"
+          }
+        },
+        "required": [
+          "room"
+        ],
+        "title": "RecommendRequest",
+        "type": "object"
+      },
+      "RecommendResponse": {
+        "properties": {
+          "candidates": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/Candidate"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "enum": [
+                "bed",
+                "desk",
+                "desk_chair",
+                "dresser",
+                "nightstand"
+              ]
+            },
+            "title": "Candidates",
+            "type": "object"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/Evaluation"
+          },
+          "layout": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutItem"
+            },
+            "title": "Layout",
+            "type": "array"
+          },
+          "placed": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Rect"
+            },
+            "propertyNames": {
+              "enum": [
+                "bed",
+                "desk",
+                "desk_chair",
+                "dresser",
+                "nightstand"
+              ]
+            },
+            "title": "Placed",
+            "type": "object"
+          },
+          "searched": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SearchStats"
+            },
+            "propertyNames": {
+              "enum": [
+                "bed",
+                "desk",
+                "desk_chair",
+                "dresser",
+                "nightstand"
+              ]
+            },
+            "title": "Searched",
+            "type": "object"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/Slot"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "sorted_by": {
+            "default": "lowest price that fits",
+            "title": "Sorted By",
+            "type": "string"
+          },
+          "unplaced": {
+            "items": {
+              "$ref": "#/components/schemas/Unplaced"
+            },
+            "title": "Unplaced",
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/Zone"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "slots",
+          "placed",
+          "evaluation",
+          "zones",
+          "unplaced",
+          "layout",
+          "searched",
+          "candidates"
+        ],
+        "title": "RecommendResponse",
+        "type": "object"
+      },
+      "Rect": {
+        "properties": {
+          "d": {
+            "title": "D",
+            "type": "number"
+          },
+          "w": {
+            "title": "W",
+            "type": "number"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "w",
+          "d"
+        ],
+        "title": "Rect",
+        "type": "object"
+      },
+      "Room": {
+        "properties": {
+          "closet": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rect"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "exclusiveMinimum": 0.0,
+            "title": "Depth",
+            "type": "number"
+          },
+          "door": {
+            "$ref": "#/components/schemas/Door"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "number"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Window"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "width",
+          "depth",
+          "door"
+        ],
+        "title": "Room",
+        "type": "object"
+      },
+      "SearchStats": {
+        "properties": {
+          "fit_slot": {
+            "title": "Fit Slot",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "with_dimensions": {
+            "title": "With Dimensions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "found",
+          "with_dimensions",
+          "fit_slot"
+        ],
+        "title": "SearchStats",
+        "type": "object"
+      },
+      "Shop": {
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "domain"
+        ],
+        "title": "Shop",
+        "type": "object"
+      },
+      "Slot": {
+        "description": "A slot as the API returns it (original room coordinates).",
+        "properties": {
+          "assumed_footprint": {
+            "default": false,
+            "title": "Assumed Footprint",
+            "type": "boolean"
+          },
+          "fits": {
+            "title": "Fits",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "max_footprint": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Max Footprint",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "region": {
+            "$ref": "#/components/schemas/Rect"
+          },
+          "role": {
+            "enum": [
+              "bed",
+              "desk",
+              "desk_chair",
+              "dresser",
+              "nightstand"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "region",
+          "max_footprint",
+          "fits"
+        ],
+        "title": "Slot",
+        "type": "object"
+      },
+      "Unplaced": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "slot_id": {
+            "enum": [
+              "bed",
+              "desk",
+              "desk_chair",
+              "dresser",
+              "nightstand"
+            ],
+            "title": "Slot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "reason"
+        ],
+        "title": "Unplaced",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "Window": {
+        "properties": {
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "number"
+          },
+          "wall": {
+            "enum": [
+              "top",
+              "bottom",
+              "left",
+              "right"
+            ],
+            "title": "Wall",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "wall",
+          "offset",
+          "width"
+        ],
+        "title": "Window",
+        "type": "object"
+      },
+      "Zone": {
+        "description": "A clearance area the UI can shade: red when `broken`, with how far short it is.",
+        "properties": {
+          "broken": {
+            "title": "Broken",
+            "type": "boolean"
+          },
+          "rect": {
+            "$ref": "#/components/schemas/Rect"
+          },
+          "rule": {
+            "enum": [
+              "path_from_door",
+              "bed_open_side",
+              "in_front_of_dresser",
+              "in_front_of_closet",
+              "behind_desk_chair"
+            ],
+            "title": "Rule",
+            "type": "string"
+          },
+          "short_in": {
+            "title": "Short In",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rule",
+          "rect",
+          "broken",
+          "short_in"
+        ],
+        "title": "Zone",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Room Fit",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/evaluate": {
+      "post": {
+        "operationId": "evaluate_api_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evaluate"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/recommend": {
+      "post": {
+        "operationId": "recommend_api_recommend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommend"
+      }
+    }
+  }
+}
