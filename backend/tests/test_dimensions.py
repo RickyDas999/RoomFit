@@ -196,3 +196,16 @@ def test_fractions_and_feet_inches(text: str, expected: Dimensions) -> None:
 def test_quantity_prefix_is_not_a_size(text: str) -> None:
     r = parse_dimensions(text)
     assert r.status == "ambiguous" and r.reason == "quantity"
+
+
+@pytest.mark.parametrize(
+    "text", ["2 x 3 in", "28 x 40 mm", "5 x 30 in", "40 x 5.9 in", "Pack of tiles 4 x 4 in"]
+)
+def test_width_and_depth_under_six_inches_is_implausible(text: str) -> None:
+    r = parse_dimensions(text)
+    assert r.status == "ambiguous" and r.dimensions is None
+    assert r.reason in ("implausible", "quantity")
+
+
+def test_exactly_six_inches_is_allowed() -> None:
+    assert parse_dimensions("6 x 6 x 2 in").dimensions == D(w=6, d=6, h=2)

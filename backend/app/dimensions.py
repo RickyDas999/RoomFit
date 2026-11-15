@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 MAX_INCHES = 300.0  # sanity guard: nothing in a bedroom is 25 ft long
+MIN_INCHES = 6.0  # width and depth must be at least this (Ricky, Nov 15)
 
 Reason = Literal[
     "no_dimensions",
@@ -180,7 +181,9 @@ def _assign(items: list[tuple[str, str | None, str | None]]) -> Dimensions | Rea
             slots[free] = v
     if "w" not in slots or "d" not in slots:
         return "incomplete"
-    if any(not 0 < v <= MAX_INCHES for v in slots.values()):
+    if any(not MIN_INCHES <= slots[k] <= MAX_INCHES for k in ("w", "d")) or (
+        "h" in slots and not 0 < slots["h"] <= MAX_INCHES
+    ):
         return "implausible"
     return Dimensions(
         w=round(slots["w"], 2),
