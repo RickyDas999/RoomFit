@@ -5,7 +5,7 @@ Read `docs/HANDOFF.md` first. It defines the product, rules of engagement, and m
 ## Commands
 - Backend (from `backend/`): `python3.12 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'`
   - Run: `uvicorn app.main:app --reload`
-  - Check: `ruff check . && mypy app tests && pytest`
+  - Check: `ruff check . && mypy app tests scripts && pytest`
 - Frontend (from `frontend/`): `npm install`
   - Run: `npm run dev`
   - Check: `npm run lint && npx tsc -b && npm test && npm run build`
