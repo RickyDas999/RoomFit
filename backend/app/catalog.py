@@ -10,11 +10,12 @@ import os
 import re
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel
 
+from app.dimensions import Dimensions, Reason, parse_dimensions
 from app.search import SEARCH_LIMIT
 
 TOKEN_URL = "https://api.shopify.com/auth/access_token"
@@ -62,8 +63,10 @@ class Product(BaseModel):
     url: str | None
     native_checkout: bool
     description: str  # plain text; M2's parser reads this
-    dimensions: None = None  # filled by the M2 parser
-    dimension_source: None = None
+    dimensions: Dimensions | None = None  # W x D x H in inches, from the M2 parser
+    dimension_source: str | None = None  # matched text snippet
+    dimension_status: Literal["parsed", "ambiguous", "missing"] = "missing"
+    dimension_reason: Reason | None = None  # why not "parsed"
 
 
 def _plain(text: str) -> str:
@@ -84,6 +87,8 @@ def parse_product(raw: dict[str, Any]) -> Product | None:
         desc = (raw.get("description") or {}).get("html") or (v.get("description") or {}).get(
             "plain", ""
         )
+        text = _plain(desc)
+        dims = parse_dimensions(text)
         return Product(
             id=raw["id"],
             variant_id=v["id"],
