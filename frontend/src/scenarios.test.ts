@@ -3,8 +3,8 @@ import { SAMPLE_FORM, toRoom, validate } from './room'
 import { SCENARIOS, matchScenario } from './scenarios'
 
 describe('scenarios', () => {
-  it('has the six examples, the first being the sample room', () => {
-    expect(SCENARIOS.map((s) => s.id)).toEqual(['starter', 'corner-door', 'small', 'wfh', 'studio', 'studio-no-desk'])
+  it('has the seven examples, the first being the sample room', () => {
+    expect(SCENARIOS.map((s) => s.id)).toEqual(['starter', 'narrow', 'corner-door', 'small', 'wfh', 'studio', 'studio-no-desk'])
     expect(SCENARIOS[0].form).toEqual(SAMPLE_FORM)
   })
 
@@ -27,9 +27,14 @@ describe('scenarios', () => {
   })
 
   it('matches a form to its preset regardless of needs order, and a changed form to none', () => {
-    const small = SCENARIOS[2]
+    const small = SCENARIOS.find((x) => x.id === 'small')!
     expect(matchScenario({ ...small.form, needs: ['dresser', 'nightstand'] })?.id).toBe('small')
     expect(matchScenario({ ...small.form, width: 121 })).toBeUndefined()
     expect(matchScenario({ ...small.form, bedSize: 'king' })).toBeUndefined()
+  })
+
+  it('has a narrow bedroom (10 x 16 ft, no closet) for the clearance moment, right after the sample room', () => {
+    expect(SCENARIOS[1].id).toBe('narrow')
+    expect(SCENARIOS[1].form).toMatchObject({ width: 124, depth: 192, closet: false, needs: ['nightstand', 'dresser', 'desk'], bedSize: 'auto' })
   })
 })

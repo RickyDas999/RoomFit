@@ -18,6 +18,12 @@ export const SCENARIOS: Scenario[] = [
     form: base,
   },
   {
+    id: 'narrow',
+    label: 'Narrow bedroom',
+    blurb: '10 x 16 ft. The cheapest desk fits. Swap in the big L-shaped desk and the clearance behind the chair and beside the bed break.',
+    form: { ...base, width: 124, depth: 192, doorOffset: 46, windowOffset: 38, closet: false },
+  },
+  {
     id: 'corner-door',
     label: 'Door in the corner',
     blurb: 'Same size, but the door moves to the far end of the wall. The bed goes to the open side and the desk moves to the door wall.',

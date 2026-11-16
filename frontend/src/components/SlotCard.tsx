@@ -19,6 +19,15 @@ interface Props {
   onSwap: (product: Product) => void
 }
 
+/** How far to trust a listing's size: stated, inferred (a guess), unclear or missing. */
+function Confidence({ product }: { product: Product }) {
+  if (!product.dimensions || product.dimension_status !== 'parsed') {
+    const unclear = product.dimension_status === 'ambiguous' || product.dimension_confidence === 'ambiguous'
+    return unclear ? <span className="badge badge--unclear">size unclear</span> : <span className="badge badge--missing">dimensions missing</span>
+  }
+  return product.dimension_confidence === 'inferred' ? <span className="badge badge--inferred">inferred</span> : <span className="badge badge--stated">stated</span>
+}
+
 function Dimensions({ product, assumed, slot }: { product: Product; assumed: boolean; slot: Slot }) {
   if (assumed) {
     return (
@@ -32,12 +41,8 @@ function Dimensions({ product, assumed, slot }: { product: Product; assumed: boo
     return (
       <p className="dims">
         <strong>{formatDimensions(product.dimensions)}</strong>
-        {product.dimension_confidence === 'inferred' && (
-          <>
-            {' '}
-            <span className="badge badge--inferred">inferred</span>
-          </>
-        )}
+        {' '}
+        <Confidence product={product} />
         {product.dimension_source && (
           <span className="hint">
             {' '}
@@ -49,7 +54,7 @@ function Dimensions({ product, assumed, slot }: { product: Product; assumed: boo
   }
   return (
     <p className="dims">
-      <span className="badge badge--missing">dimensions missing</span>{' '}
+      <Confidence product={product} />{' '}
       <span className="hint">{reasonText(product.dimension_reason)}</span>
     </p>
   )
@@ -124,11 +129,10 @@ export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap,
                         <p className="dims">
                           {c.product.dimensions && c.product.dimension_status === 'parsed' ? (
                             <>
-                              <strong>{formatDimensions(c.product.dimensions)}</strong>
-                              {c.product.dimension_confidence === 'inferred' && <span className="badge badge--inferred">inferred</span>}
+                              <strong>{formatDimensions(c.product.dimensions)}</strong> <Confidence product={c.product} />
                             </>
                           ) : (
-                            <span className="badge badge--missing">dimensions missing</span>
+                            <Confidence product={c.product} />
                           )}{' '}
                           {c.product.dimensions && !c.fits_slot && <span className="badge badge--nofit">bigger than the space</span>}
                         </p>

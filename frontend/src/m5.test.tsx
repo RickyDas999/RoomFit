@@ -14,8 +14,9 @@ const inferred = makeProduct('inf', { title: 'Guessed desk', dimension_confidenc
 const stats = (over: Partial<SearchStats> = {}): SearchStats => ({ found: 25, with_dimensions: 9, fit_slot: 5, stated: 6, inferred: 3, ambiguous: 4, missing: 12, ...over })
 
 describe('confidence in the product card', () => {
-  it('a stated size has no warning', () => {
+  it('a stated size is badged "stated" and has no warning', () => {
     render(<SlotCard {...base} item={item()} />)
+    expect(screen.getByText('stated')).toBeInTheDocument()
     expect(screen.queryByText('inferred')).not.toBeInTheDocument()
     expect(screen.getByText(/from the listing/)).toBeInTheDocument()
   })
@@ -38,8 +39,31 @@ describe('confidence in the product card', () => {
   it('a bed whose size does not match its name says so instead of a size', () => {
     const bad = makeProduct('q', { title: 'Queen bed', dimensions: null, dimension_status: 'ambiguous', dimension_reason: 'size_mismatch', dimension_confidence: 'ambiguous' })
     render(<SlotCard {...base} item={item(bad)} />)
-    expect(screen.getByText('dimensions missing')).toBeInTheDocument()
+    expect(screen.getByText('size unclear')).toBeInTheDocument()
     expect(screen.getByText('the listed size is smaller than the bed size in its name')).toBeInTheDocument()
+  })
+})
+
+describe('a badge for every confidence class, in the card and in the swap list', () => {
+  const classes = [
+    ['stated', makeProduct('s1', { title: 'Stated desk' }), 'stated'],
+    ['inferred', makeProduct('i1', { title: 'Guessed desk', dimension_confidence: 'inferred' }), 'inferred'],
+    ['ambiguous', makeProduct('a1', { title: 'Unclear desk', dimensions: null, dimension_status: 'ambiguous', dimension_reason: 'multiple_sizes', dimension_confidence: 'ambiguous' }), 'size unclear'],
+    ['missing', makeProduct('m1', { title: 'Blank desk', dimensions: null, dimension_status: 'missing', dimension_reason: 'no_dimensions', dimension_confidence: 'missing' }), 'dimensions missing'],
+  ] as const
+
+  it.each(classes)('the card shows the %s badge', (_name, product, text) => {
+    render(<SlotCard {...base} item={item(product)} />)
+    expect(screen.getByText(text, { selector: '.badge' })).toBeInTheDocument()
+  })
+
+  it('the swap list shows one badge per listing, matching its class', () => {
+    render(<SlotCard {...base} item={item()} candidates={classes.map(([, p]) => cand(p, false))} />)
+    fireEvent.click(screen.getByRole('button', { name: /Swap/ }))
+    for (const [, product, text] of classes) {
+      const row = screen.getByText(product.title).closest('li')!
+      expect(within(row).getByText(text, { selector: '.badge' })).toBeInTheDocument()
+    }
   })
 })
 
