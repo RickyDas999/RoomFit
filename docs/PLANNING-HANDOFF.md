@@ -80,7 +80,7 @@ One important departure: **the planned UCP checkout sessions could not be offere
 
 ## 6. Open items and things you will want to decide
 
-**Decisions logged but not explicitly confirmed by Ricky** (their PRs were merged, but their rows in `docs/decisions-log.md` still say "to confirm"): the M2 rows about repeated sizes and the 4+ numbers / quantity rules; the four M5 rows (confidence classes, tech_specs label rules, the bed size check rules, rotation and its tie-break); the storyboard-audit row (Narrow bedroom, badge wording). Worth asking Ricky for a quick yes so the log is clean.
+**Decisions log:** every row is now confirmed by Ricky (the last seven, M2 and M5 details and the storyboard audit, were confirmed on Nov 16). Nothing in `docs/decisions-log.md` is waiting on him.
 
 **`docs/HANDOFF.md` is stale in these places** (it is Ricky's doc; nothing was edited):
 - Section 6, profile: still a raw.githubusercontent URL; now jsDelivr pinned to a commit, with cart and checkout capabilities.
