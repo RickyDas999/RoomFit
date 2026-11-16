@@ -54,3 +54,13 @@ export function dataGapText(role: string, s: { found: number; with_dimensions: n
   const how = s.inferred ? ` (${s.stated ?? 0} stated, ${s.inferred} inferred)` : ''
   return `Of ${s.found} ${what} Shopify returned, ${s.with_dimensions} list usable dimensions${how}.`
 }
+
+/** Minor units (cents) to "$53.00". */
+export function formatMoney(amount: number, currency: string | null | undefined): string {
+  const cur = currency ?? 'USD'
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(amount / 100)
+  } catch {
+    return `${(amount / 100).toFixed(2)} ${cur}`
+  }
+}

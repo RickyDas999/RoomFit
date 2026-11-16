@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, evaluate, recommend } from './api/client'
-import type { Candidate, EvaluateResponse, LayoutItem, Need, Product, RecommendResponse, Role, Room } from './api/types'
+import { ApiError, cancelCarts, cancelCartsOnExit, cartRefs, createCarts, evaluate, recommend } from './api/client'
+import type { CartSession, Candidate, EvaluateResponse, LayoutItem, Need, Product, RecommendResponse, Role, Room } from './api/types'
 import { ROLES } from './api/types'
 import { CoverageMeter, FlagsList, Verdict } from './components/Flags'
+import { CheckoutPanel } from './components/CheckoutPanel'
 import { FloorPlan } from './components/FloorPlan'
 import { RoomFormView } from './components/RoomForm'
 import { DataGap, SlotCard } from './components/SlotCard'
@@ -25,6 +26,10 @@ const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Something 
 export default function App() {
   const [form, setForm] = useState<RoomForm>(SAMPLE_FORM)
   const [view, setView] = useState<View | null>(null)
+  const viewRef = useRef<View | null>(null)
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
   const [busy, setBusy] = useState<'idle' | 'searching' | 'checking'>('idle')
   const [error, setError] = useState<string | null>(null)
   // True from an edit until the plan has been redrawn for the new room (the plan is dimmed meanwhile).
@@ -32,6 +37,31 @@ export default function App() {
   // Counts edits, so even an edit back to the same room redraws the plan.
   const [edits, setEdits] = useState(0)
   const latest = useRef(0) // only the newest request may update the screen
+  // Carts made at the shops for the products on screen. They go away when the products change.
+  const [carts, setCarts] = useState<CartSession[] | null>(null)
+  const [cartBusy, setCartBusy] = useState<'idle' | 'creating' | 'cancelling'>('idle')
+  const [cartError, setCartError] = useState<string | null>(null)
+  const cartsRef = useRef<CartSession[] | null>(null)
+  useEffect(() => {
+    cartsRef.current = carts
+  }, [carts])
+
+  /** Drop the carts from the screen and cancel them at the shops (best effort, never blocks). */
+  const dropCarts = () => {
+    const refs = cartRefs(cartsRef.current ?? [])
+    cartsRef.current = null
+    setCarts(null)
+    setCartBusy('idle')
+    setCartError(null)
+    if (refs.length > 0) void cancelCarts(refs).catch(() => undefined)
+  }
+
+  // Cancel the carts if the page is closed or reloaded.
+  useEffect(() => {
+    const onExit = () => cancelCartsOnExit(cartRefs(cartsRef.current ?? []))
+    window.addEventListener('pagehide', onExit)
+    return () => window.removeEventListener('pagehide', onExit)
+  }, [])
 
   const errors = useMemo(() => validate(form), [form])
   const room = useMemo(() => (errors.length === 0 ? toRoom(form) : null), [errors, form])
@@ -58,6 +88,7 @@ export default function App() {
 
   const onChange = (next: RoomForm) => {
     latest.current++ // anything still in flight was for the old room: drop it
+    dropCarts() // carts were made for the old products
     setBusy('idle')
     setDirty(true)
     setEdits((n) => n + 1)
@@ -92,6 +123,7 @@ export default function App() {
     const old = view.layout.find((i) => i.slot_id === role)
     const item: LayoutItem = { slot_id: role, product, footprint_basis: old?.footprint_basis ?? 'parsed' }
     const layout = [...view.layout.filter((i) => i.slot_id !== role), item]
+    dropCarts() // a swap changes what would be bought
     const mine = ++latest.current
     setBusy('checking')
     setError(null)
@@ -105,6 +137,45 @@ export default function App() {
       if (mine === latest.current) setError(message(e))
     } finally {
       if (mine === latest.current) setBusy('idle')
+    }
+  }
+
+  async function makeCarts() {
+    if (!view || view.layout.length === 0) return
+    const layout = view.layout
+    setCartBusy('creating')
+    setCartError(null)
+    try {
+      const sessions = await createCarts(layout)
+      if (view !== viewRef.current) {
+        // the room or the products changed while the shops were answering: cancel what was made
+        const refs = cartRefs(sessions)
+        if (refs.length > 0) void cancelCarts(refs).catch(() => undefined)
+        return
+      }
+      setCarts(sessions)
+    } catch (e) {
+      setCartError(message(e))
+    } finally {
+      setCartBusy((b) => (b === 'creating' ? 'idle' : b))
+    }
+  }
+
+  async function cancelAll() {
+    const refs = cartRefs(carts ?? [])
+    setCartBusy('cancelling')
+    setCartError(null)
+    try {
+      if (refs.length > 0) {
+        const res = await cancelCarts(refs)
+        if (res.failed > 0) setCartError(`${res.failed} cart(s) could not be cancelled. They expire on their own.`)
+      }
+      cartsRef.current = null
+      setCarts(null)
+    } catch (e) {
+      setCartError(message(e))
+    } finally {
+      setCartBusy('idle')
     }
   }
 
@@ -177,6 +248,15 @@ export default function App() {
               )
             })}
         </section>
+
+        <CheckoutPanel
+          canCreate={!!view && view.layout.length > 0 && busy === 'idle'}
+          sessions={carts}
+          busy={cartBusy}
+          error={cartError}
+          onCreate={makeCarts}
+          onCancel={cancelAll}
+        />
       </main>
     </div>
   )
