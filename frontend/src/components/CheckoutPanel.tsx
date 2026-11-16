@@ -55,8 +55,8 @@ function Session({ s }: { s: CartSession }) {
 export function CheckoutPanel({ canCreate, sessions, busy, error, onCreate, onCancel }: Props) {
   const made = sessions?.filter((s) => s.status === 'created').length ?? 0
   return (
-    <section className="panel panel--checkout" aria-label="Checkout">
-      <h2>Checkout</h2>
+    <section className="panel panel--checkout" aria-labelledby="checkout-title">
+      <h2 id="checkout-title">Checkout</h2>
       <p className="notice" role="note">
         <strong>Prototype: purchase disabled.</strong> This makes one cart per shop and shows what the shop returned. The app never takes payment or buys anything. Carts are cancelled when you change the room or leave the page.
       </p>
@@ -68,13 +68,18 @@ export function CheckoutPanel({ canCreate, sessions, busy, error, onCreate, onCa
           {busy === 'cancelling' ? 'Cancelling…' : 'Cancel carts'}
         </button>
       </div>
+      <p aria-live="polite" className="status">
+        {busy === 'creating' && 'Asking each shop for a cart…'}
+        {busy === 'cancelling' && 'Cancelling the carts…'}
+        {busy === 'idle' && sessions !== null && sessions.length > 0 && `${made} of ${sessions.length} carts made.`}
+      </p>
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
       {sessions && sessions.length === 0 && <p className="hint">Nothing chosen yet.</p>}
-      {sessions && sessions.length > 0 && <ul className="carts">{sessions.map((s) => <Session key={s.shop.domain} s={s} />)}</ul>}
+      {sessions && sessions.length > 0 && <ul className="carts">{sessions.map((s, i) => <Session key={`${s.shop.domain}-${i}`} s={s} />)}</ul>}
     </section>
   )
 }

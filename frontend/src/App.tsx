@@ -42,12 +42,14 @@ export default function App() {
   const [cartBusy, setCartBusy] = useState<'idle' | 'creating' | 'cancelling'>('idle')
   const [cartError, setCartError] = useState<string | null>(null)
   const cartsRef = useRef<CartSession[] | null>(null)
+  const cartGen = useRef(0) // bumped whenever carts are dropped, so a late answer can tell it is stale
   useEffect(() => {
     cartsRef.current = carts
   }, [carts])
 
   /** Drop the carts from the screen and cancel them at the shops (best effort, never blocks). */
   const dropCarts = () => {
+    cartGen.current++
     const refs = cartRefs(cartsRef.current ?? [])
     cartsRef.current = null
     setCarts(null)
@@ -59,8 +61,19 @@ export default function App() {
   // Cancel the carts if the page is closed or reloaded.
   useEffect(() => {
     const onExit = () => cancelCartsOnExit(cartRefs(cartsRef.current ?? []))
+    // A page restored from the back/forward cache must not show carts that pagehide cancelled.
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        cartsRef.current = null
+        setCarts(null)
+      }
+    }
     window.addEventListener('pagehide', onExit)
-    return () => window.removeEventListener('pagehide', onExit)
+    window.addEventListener('pageshow', onShow)
+    return () => {
+      window.removeEventListener('pagehide', onExit)
+      window.removeEventListener('pageshow', onShow)
+    }
   }, [])
 
   const errors = useMemo(() => validate(form), [form])
@@ -142,12 +155,12 @@ export default function App() {
 
   async function makeCarts() {
     if (!view || view.layout.length === 0) return
-    const layout = view.layout
+    const mine = ++cartGen.current
     setCartBusy('creating')
     setCartError(null)
     try {
-      const sessions = await createCarts(layout)
-      if (view !== viewRef.current) {
+      const sessions = await createCarts(view.layout)
+      if (mine !== cartGen.current) {
         // the room or the products changed while the shops were answering: cancel what was made
         const refs = cartRefs(sessions)
         if (refs.length > 0) void cancelCarts(refs).catch(() => undefined)
@@ -155,27 +168,28 @@ export default function App() {
       }
       setCarts(sessions)
     } catch (e) {
-      setCartError(message(e))
+      if (mine === cartGen.current) setCartError(message(e))
     } finally {
-      setCartBusy((b) => (b === 'creating' ? 'idle' : b))
+      if (mine === cartGen.current) setCartBusy('idle')
     }
   }
 
   async function cancelAll() {
     const refs = cartRefs(carts ?? [])
+    const mine = ++cartGen.current
+    cartsRef.current = null // an edit during the request must not cancel the same carts twice
     setCartBusy('cancelling')
     setCartError(null)
     try {
       if (refs.length > 0) {
         const res = await cancelCarts(refs)
-        if (res.failed > 0) setCartError(`${res.failed} cart(s) could not be cancelled. They expire on their own.`)
+        if (res.failed > 0 && mine === cartGen.current) setCartError(`${res.failed} cart(s) could not be cancelled. They expire on their own.`)
       }
-      cartsRef.current = null
-      setCarts(null)
+      if (mine === cartGen.current) setCarts(null)
     } catch (e) {
-      setCartError(message(e))
+      if (mine === cartGen.current) setCartError(message(e))
     } finally {
-      setCartBusy('idle')
+      if (mine === cartGen.current) setCartBusy('idle')
     }
   }
 

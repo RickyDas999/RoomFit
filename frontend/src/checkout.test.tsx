@@ -246,4 +246,39 @@ describe('carts in the app', () => {
     expect(url).toBe('/api/checkout/cancel')
     expect(JSON.parse(await blob.text())).toEqual({ carts: [{ domain: 'shop-a.example.com', cart_id: 'gid://shopify/Cart/c1?key=k' }] })
   })
+
+  it('cancels carts that arrive after a swap changed the products (the review race)', async () => {
+    let release!: (r: Response) => void
+    const f = mockApi({ checkout: () => new Promise<Response>((res) => (release = res)) })
+    render(<App />)
+    await search()
+    fireEvent.click(screen.getByRole('button', { name: 'Make a cart at each shop' }))
+    fireEvent.click(within(screen.getByTestId('slot-desk')).getByRole('button', { name: /Swap/ }))
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`Use ${BIG_DESK.title}`) }))
+    release(new Response(JSON.stringify({ sessions: [session()], notice: 'x' }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    await waitFor(() => expect(to(f, '/api/checkout/cancel')).toHaveLength(1))
+    expect(screen.queryByTestId('cart-shop-a.example.com')).not.toBeInTheDocument()
+  })
+
+  it('does not cancel the same carts twice when the room is edited while they are being cancelled', async () => {
+    let release!: (r: Response) => void
+    const f = mockApi({ cancel: () => new Promise<Response>((res) => (release = res)) })
+    render(<App />)
+    await search()
+    await makeCart()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel carts' }))
+    fireEvent.change(screen.getByLabelText('Width (in)'), { target: { value: '150' } })
+    release(new Response(JSON.stringify({ cancelled: 1, failed: 0 }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(to(f, '/api/checkout/cancel')).toHaveLength(1)
+  })
+
+  it('forgets carts when the page comes back from the back/forward cache', async () => {
+    mockApi()
+    render(<App />)
+    await search()
+    await makeCart()
+    window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }))
+    await waitFor(() => expect(screen.queryByTestId('cart-shop-a.example.com')).not.toBeInTheDocument())
+  })
 })

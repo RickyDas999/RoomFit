@@ -196,6 +196,7 @@
             "items": {
               "$ref": "#/components/schemas/LayoutItem"
             },
+            "maxItems": 20,
             "title": "Layout",
             "type": "array"
           }

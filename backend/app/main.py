@@ -354,7 +354,7 @@ def get_cart_client() -> CartClient:
 
 
 class CheckoutRequest(BaseModel):
-    layout: list[LayoutItem]
+    layout: list[LayoutItem] = Field(max_length=20)  # the room has five slots; no way to inflate a cart
 
 
 class CheckoutResponse(BaseModel):

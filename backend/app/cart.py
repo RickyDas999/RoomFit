@@ -10,6 +10,7 @@ Rules: never log `continue_url`; only pass it on if it is https; never hold paym
 """
 
 import asyncio
+import json
 import os
 import re
 import uuid
@@ -20,19 +21,27 @@ from pydantic import BaseModel
 
 from app.catalog import PROFILE_URL, Shop
 
-TIMEOUT = 20.0
+TIMEOUT = 20.0  # per read
+TOTAL_TIMEOUT = 25.0  # per call, however slowly a shop drips its answer
+MAX_BODY = 1_000_000  # bytes of a shop's answer we are willing to read
 MAX_SHOPS = 10
 _HOST = re.compile(r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 _VARIANT = re.compile(r"^gid://shopify/ProductVariant/\d{1,20}$")
 _CART = re.compile(r"^gid://shopify/Cart/[A-Za-z0-9_?=&.-]{1,200}$")
-_BLOCKED_SUFFIXES = (".local", ".internal", ".localhost", ".lan", ".home", ".corp")
+_BLOCKED_SUFFIXES = (
+    ".local", ".internal", ".localhost", ".localdomain", ".lan", ".home", ".corp",
+    ".intranet", ".private", ".arpa",
+)
 
 
 def valid_shop_domain(domain: str) -> bool:
     """A plain public-looking hostname: no scheme, port, path or IP. The browser supplies it, and the
     server calls it, so it must not be able to point the server at an internal address."""
-    d = domain.strip()
-    return bool(_HOST.match(d)) and d == d.lower() and not d.endswith(_BLOCKED_SUFFIXES)
+    return (
+        bool(_HOST.fullmatch(domain))
+        and domain == domain.lower()
+        and not domain.endswith(_BLOCKED_SUFFIXES)
+    )
 
 
 class CartLine(BaseModel):
@@ -70,9 +79,16 @@ class CartCallError(Exception):
 
 
 def https_only(url: object) -> str | None:
-    if not isinstance(url, str) or not url.startswith("https://"):
+    """The link if it is a plain https URL (no spaces, no user:password@), else None."""
+    if not isinstance(url, str) or len(url) > 2000 or not url.startswith("https://"):
         return None
-    return url if httpx.URL(url).host else None
+    if any(c.isspace() or ord(c) < 32 or ord(c) > 126 for c in url):
+        return None
+    try:
+        parsed = httpx.URL(url)
+    except httpx.InvalidURL:
+        return None
+    return url if parsed.host and not parsed.userinfo else None
 
 
 def _rpc(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -98,14 +114,18 @@ class CartClient:
         return {"ucp-agent": {"profile": self._profile}, **extra}
 
     async def _call(self, domain: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        r = await self._http.post(f"https://{domain}/api/ucp/mcp", json=_rpc(name, arguments))
-        if r.status_code == 429:
-            raise CartCallError("the shop is rate limiting us (HTTP 429)")
-        if r.status_code != 200:
-            raise CartCallError(f"the shop answered HTTP {r.status_code}")
         try:
-            data = r.json()
-        except ValueError:
+            async with asyncio.timeout(TOTAL_TIMEOUT):
+                status, raw = await self._post(f"https://{domain}/api/ucp/mcp", _rpc(name, arguments))
+        except TimeoutError:
+            raise CartCallError("the shop took too long to answer") from None
+        if status == 429:
+            raise CartCallError("the shop is rate limiting us (HTTP 429)")
+        if status != 200:
+            raise CartCallError(f"the shop answered HTTP {status}")
+        try:
+            data = json.loads(raw)
+        except (ValueError, RecursionError):
             raise CartCallError("the shop's answer was not JSON") from None
         if not isinstance(data, dict):
             raise CartCallError("the shop's answer was not a JSON object")
@@ -118,11 +138,23 @@ class CartClient:
             raise CartCallError("the shop's answer had no cart")
         return sc
 
+    async def _post(self, url: str, body: dict[str, Any]) -> tuple[int, bytes]:
+        """POST and read at most MAX_BODY bytes. Redirects are not followed."""
+        async with self._http.stream("POST", url, json=body) as r:
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in r.aiter_bytes():
+                size += len(chunk)
+                if size > MAX_BODY:
+                    raise CartCallError("the shop's answer was too large")
+                chunks.append(chunk)
+            return r.status_code, b"".join(chunks)
+
     async def create(self, shop: Shop, variants: dict[str, int]) -> CartSession:
         """One cart at one shop. `variants` maps variant id to quantity. Never raises."""
         if not valid_shop_domain(shop.domain):
             return CartSession(shop=shop, status="error", error="not a usable shop address")
-        if not variants or not all(_VARIANT.match(v) for v in variants):
+        if not variants or not all(_VARIANT.fullmatch(v) for v in variants):
             return CartSession(shop=shop, status="error", error="not a usable product id")
         args = {
             "meta": self._meta(),
@@ -140,59 +172,91 @@ class CartClient:
             return CartSession(shop=shop, status="error", error=msg)
         raw_cart = sc.get("cart")
         cart: dict[str, Any] = raw_cart if isinstance(raw_cart, dict) else sc
-        messages = [
-            Message(
-                type=str(m.get("type", "info")),
-                code=str(m.get("code", "")),
-                content=str(m.get("content", ""))[:300],
-            )
-            for m in cart.get("messages") or []
-            if isinstance(m, dict)
-        ]
         cart_id = cart.get("id")
-        if not isinstance(cart_id, str) or not _CART.match(cart_id):
-            why = next((m.content for m in messages if m.type == "error"), "the shop made no cart")
-            return CartSession(shop=shop, status="error", messages=messages, error=why)
-        return CartSession(
-            shop=shop,
-            status="created",
-            cart_id=cart_id,
-            currency=cart.get("currency") if isinstance(cart.get("currency"), str) else None,
-            lines=_lines(cart),
-            totals=_totals(cart.get("totals")),
-            messages=messages,
-            continue_url=https_only(cart.get("continue_url")),
-        )
+        try:
+            messages = _messages(cart.get("messages"))
+            if not isinstance(cart_id, str) or not _CART.fullmatch(cart_id):
+                why = next((m.content for m in messages if m.type == "error"), "the shop made no cart")
+                return CartSession(shop=shop, status="error", messages=messages, error=why)
+            return CartSession(
+                shop=shop,
+                status="created",
+                cart_id=cart_id,
+                currency=cart.get("currency") if isinstance(cart.get("currency"), str) else None,
+                lines=_lines(cart),
+                totals=_totals(cart.get("totals")),
+                messages=messages,
+                continue_url=https_only(cart.get("continue_url")),
+            )
+        except (TypeError, ValueError, AttributeError, KeyError, RecursionError):
+            # a cart exists but we cannot read it: do not leave it behind
+            if isinstance(cart_id, str):
+                await self.cancel(shop.domain, cart_id)
+            return CartSession(shop=shop, status="error", error="the shop's cart could not be read")
 
     async def cancel(self, domain: str, cart_id: str) -> bool:
-        """Cancel one cart. True if the shop confirmed (or no longer knows the cart)."""
-        if not valid_shop_domain(domain) or not _CART.match(cart_id):
+        """Cancel one cart. True if the shop answered and the cart is gone (a "not found" answer
+        counts: it is already gone). False for an unusable address or id, or a failed call."""
+        if not valid_shop_domain(domain) or not _CART.fullmatch(cart_id):
             return False
         args = {"meta": self._meta(**{"idempotency-key": str(uuid.uuid4())}), "id": cart_id}
         try:
-            await self._call(domain, "cancel_cart", args)
+            sc = await self._call(domain, "cancel_cart", args)
         except (CartCallError, httpx.HTTPError):
             return False
-        return True
+        raw = sc.get("cart")
+        cart: dict[str, Any] = raw if isinstance(raw, dict) else sc
+        bad = {m.code for m in _messages_safe(cart.get("messages")) if m.type == "error"}
+        return not (bad - {"cart_not_found"})
+
+
+def _messages_safe(raw: object) -> list[Message]:
+    try:
+        return _messages(raw)
+    except (TypeError, ValueError, AttributeError):
+        return []
+
+
+def _messages(raw: object) -> list[Message]:
+    return [
+        Message(
+            type=str(m.get("type", "info")),
+            code=str(m.get("code", "")),
+            content=str(m.get("content", ""))[:300],
+        )
+        for m in (raw if isinstance(raw, list) else [])
+        if isinstance(m, dict)
+    ]
+
+
+def _int(x: object) -> int | None:
+    """An int, but not a bool (True is an int in Python)."""
+    return x if isinstance(x, int) and not isinstance(x, bool) else None
 
 
 def _lines(cart: dict[str, Any]) -> list[CartLine]:
     out: list[CartLine] = []
-    for li in cart.get("line_items") or []:
+    raw_lines = cart.get("line_items")
+    for li in raw_lines if isinstance(raw_lines, list) else []:
         if not isinstance(li, dict):
             continue
         raw_item = li.get("item")
         item: dict[str, Any] = raw_item if isinstance(raw_item, dict) else {}
+        li_totals = li.get("totals")
         total = next(
-            (t.get("amount") for t in li.get("totals") or [] if isinstance(t, dict) and t.get("type") == "total"),
+            (
+                t.get("amount")
+                for t in (li_totals if isinstance(li_totals, list) else [])
+                if isinstance(t, dict) and t.get("type") == "total"
+            ),
             None,
         )
         qty = li.get("quantity")
         out.append(
             CartLine(
                 title=str(item.get("title", ""))[:200],
-                quantity=qty if isinstance(qty, int) else 1,
-                amount=total if isinstance(total, int) else None,
+                quantity=q if (q := _int(qty)) is not None and q > 0 else 1,
+                amount=_int(total),
             )
         )
     return out
@@ -201,11 +265,16 @@ def _lines(cart: dict[str, Any]) -> list[CartLine]:
 def _totals(raw: object) -> list[Total]:
     out: list[Total] = []
     for t in raw if isinstance(raw, list) else []:
-        if isinstance(t, dict) and isinstance(t.get("amount"), int) and isinstance(t.get("type"), str):
+        if isinstance(t, dict) and _int(t.get("amount")) is not None and isinstance(t.get("type"), str):
             out.append(Total(type=t["type"], amount=t["amount"], display_text=str(t.get("display_text", ""))[:40]))
     return out
 
 
 async def create_carts(client: CartClient, groups: dict[str, tuple[Shop, dict[str, int]]]) -> list[CartSession]:
     """One cart per merchant, in parallel (grouped by shop domain, in the order first seen)."""
-    return list(await asyncio.gather(*(client.create(shop, v) for shop, v in groups.values())))
+    shops = list(groups.values())
+    done = await asyncio.gather(*(client.create(shop, v) for shop, v in shops), return_exceptions=True)
+    return [
+        d if isinstance(d, CartSession) else CartSession(shop=shop, status="error", error="the cart could not be made")
+        for d, (shop, _) in zip(done, shops, strict=True)
+    ]

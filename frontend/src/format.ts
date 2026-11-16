@@ -40,7 +40,8 @@ export function reasonText(reason: string | null | undefined): string {
 export function safeUrl(url: string | null | undefined): string | null {
   if (!url) return null
   try {
-    return new URL(url).protocol === 'https:' ? url : null
+    const u = new URL(url)
+    return u.protocol === 'https:' && !u.username && !u.password ? url : null
   } catch {
     return null
   }
@@ -55,11 +56,12 @@ export function dataGapText(role: string, s: { found: number; with_dimensions: n
   return `Of ${s.found} ${what} Shopify returned, ${s.with_dimensions} list usable dimensions${how}.`
 }
 
-/** Minor units (cents) to "$53.00". */
+/** Minor units (cents) to "$53.00". Currencies without cents (JPY) divide by 1. */
 export function formatMoney(amount: number, currency: string | null | undefined): string {
   const cur = currency ?? 'USD'
   try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(amount / 100)
+    const f = new Intl.NumberFormat('en-US', { style: 'currency', currency: cur })
+    return f.format(amount / 10 ** f.resolvedOptions().maximumFractionDigits!)
   } catch {
     return `${(amount / 100).toFixed(2)} ${cur}`
   }
