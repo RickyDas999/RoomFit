@@ -7,6 +7,7 @@ import { CheckoutPanel } from './components/CheckoutPanel'
 import { FloorPlan } from './components/FloorPlan'
 import { RoomFormView } from './components/RoomForm'
 import { DataGap, SlotCard } from './components/SlotCard'
+import { StoreFooter, StoreHeader } from './components/StoreChrome'
 import { SAMPLE_FORM, toRoom, validate, type RoomForm } from './room'
 
 /** What is on screen: one room, the checked plan for it, and the chosen products. */
@@ -197,11 +198,20 @@ export default function App() {
   const candidates = (role: Role): Candidate[] => view?.rec?.candidates[role] ?? []
 
   return (
-    <div className="app">
-      <header className="app__header">
-        <h1>Room Fit</h1>
-        <p>Enter a room and get real products that fit together in it, with space to walk.</p>
-      </header>
+    <div className="site">
+      <StoreHeader />
+
+      <div className="app">
+        <p className="crumbs" aria-hidden="true">
+          Home / Room Planner
+        </p>
+        <header className="app__header">
+          <h1>Room Planner</h1>
+          <p className="lead">
+            Tell us the size of your room, where the door and window are, and what you need. We pick real furniture that fits and leaves space to walk around it.
+          </p>
+          <p className="prototype-note">This is a prototype of the Room Planner inside a merchant’s online store. The store name, menu and links around it are placeholders.</p>
+        </header>
 
       <main className="app__grid">
         <section className="panel panel--form" aria-label="Room">
@@ -272,6 +282,9 @@ export default function App() {
           onCancel={cancelAll}
         />
       </main>
+      </div>
+
+      <StoreFooter />
     </div>
   )
 }
