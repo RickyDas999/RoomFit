@@ -45,12 +45,21 @@ _TITLE_SIZES = {
     "california king": (72.0, 84.0),
     "king": (76.0, 80.0),
     "queen": (60.0, 80.0),
+    "full xl": (54.0, 80.0),
     "full": (54.0, 75.0),
     "twin xl": (38.0, 80.0),
     "twin": (38.0, 75.0),
 }
 _TITLE_NAME = re.compile(
-    r"\b(california king|cal king|king|queen|full(?=[\s-]*(?:size|bed|xl|platform|frame))|twin[\s-]*xl|twin)\b",
+    r"\b(california king|cal king|king|queen(?!\s+anne)|full[\s-]*xl"
+    r"|full(?=[\s-]*(?:size|bed|platform|frame))|twin[\s-]*xl|twin)\b",
+    re.IGNORECASE,
+)
+_ANY_SIZE_WORD = re.compile(r"\b(?:king|queen(?!\s+anne)|full|twin)\b", re.IGNORECASE)
+_BED_WORD = re.compile(r"\b(bed|bedframe|frame|platform)\b", re.IGNORECASE)
+_NOT_A_BED = re.compile(
+    r"\b(desk|dresser|nightstand|night stand|bedside|chair|table|bench|sofa|couch|mirror|"
+    r"wardrobe|chest|vanity|armoire|ottoman)\b",
     re.IGNORECASE,
 )
 
@@ -58,15 +67,18 @@ _TITLE_NAME = re.compile(
 def title_size_mismatch(title: str, along: float, across: float) -> bool:
     """True if the title names exactly one bed size and the listed frame is smaller than its mattress.
 
-    Titles that name several sizes ("Twin/Full/Queen") or none are not checked.
+    Titles that name several sizes ("Twin/Full/Queen"), none, or that are not about a bed
+    (a desk, a nightstand set) are not checked.
     """
-    if not re.search(r"\b(bed|frame|platform|bedframe)\b", title, re.IGNORECASE):
+    if not _BED_WORD.search(title) or _NOT_A_BED.search(title):
         return False
     names = {
-        "california king" if m.lower().startswith("cal") else re.sub(r"[\s-]+", " ", m.lower()).replace("full xl", "full")
+        "california king"
+        if m.lower().startswith("cal")
+        else re.sub(r"[\s-]+", " ", m.lower())
         for m in _TITLE_NAME.findall(title)
     }
-    if len(names) != 1:
+    if len(names) != 1 or len(set(w.lower() for w in _ANY_SIZE_WORD.findall(title))) > 1:
         return False
     ml, mw = max(_TITLE_SIZES[next(iter(names))]), min(_TITLE_SIZES[next(iter(names))])
     long_side, short_side = max(along, across), min(along, across)

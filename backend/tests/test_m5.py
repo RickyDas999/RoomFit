@@ -284,3 +284,70 @@ def test_search_stats_count_each_confidence_class() -> None:
     s = client.post("/api/recommend", json={"room": ROOM}).json()["searched"]["desk"]
     assert (s["found"], s["with_dimensions"]) == (6, 3)
     assert (s["stated"], s["inferred"], s["ambiguous"], s["missing"]) == (1, 2, 1, 2)
+
+
+# ---------- review fixes ----------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Size: Queen (60 x 80 in)",  # a mattress size, not the frame
+        "Bed Size: 60 x 80 in",
+        "Size: Twin 38 x 75 in",
+        "Dimensions (Chair): 20 x 18 x 36 in",
+        "Dimensions (Each): 12 x 12 x 12 in",
+        "Dimensions (Open): 48 x 48 x 30 in",
+        "Dimensions (Folded): 48 x 24 x 3 in",
+    ],
+)
+def test_tech_specs_lines_about_something_else_are_ignored(line: str) -> None:
+    assert parse_tech_specs([line]).status == "missing"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Overall Dimensions (Mattress Not Included): 64 x 84 x 40 in",
+        "Product Dimensions (L x W x H): 64 x 84 x 40 in",
+        "Dimensions (Assembled): 64 x 84 x 40 in",
+        "Frame Size (in): 64 x 84 x 40 in",
+    ],
+)
+def test_tech_specs_qualifiers_that_describe_the_same_product_are_kept(
+    line: str,
+) -> None:
+    assert parse_tech_specs([line]).status == "parsed"
+
+
+def test_specs_do_not_overrule_a_description_that_lists_several_sizes() -> None:
+    p = parse_product(
+        raw(
+            "Available in 40 x 20 in or 60 x 30 in.", ["Product Dimensions: 48 x 24 in"]
+        )
+    )
+    assert (
+        p
+        and p.dimension_confidence == "ambiguous"
+        and p.dimension_reason == "multiple_sizes"
+    )
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Full Size Metal Frame Computer Desk",
+        "Twin Bed Frame Nightstand Set",
+        "Queen Size Bed Frame Dresser Set",
+        "Queen Anne Bed Frame",
+        "Full/Queen Bed Frame",
+        "Full Metal Platform Bed",
+    ],
+)
+def test_title_check_leaves_non_beds_styles_and_several_sizes_alone(title: str) -> None:
+    assert title_size_mismatch(title, 40, 20) is False
+
+
+def test_full_xl_is_checked_against_80_in_not_75() -> None:
+    assert title_size_mismatch("Full XL Bed Frame", 75, 54) is True
+    assert title_size_mismatch("Full XL Bed Frame", 82, 56) is False

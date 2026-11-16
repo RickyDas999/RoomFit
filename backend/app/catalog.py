@@ -84,6 +84,18 @@ def _plain(text: str) -> str:
     return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", text)).split())
 
 
+# Description reasons the tech specs may overrule (the description names no usable product size).
+RESCUABLE = {
+    "no_unit",
+    "incomplete",
+    "implausible",
+    "range",
+    "shipping_size",
+    "mattress_size",
+    "component_only",
+}
+
+
 def parse_product(raw: dict[str, Any]) -> Product | None:
     """Parse one catalog product. Returns None if it is unusable (never raises)."""
     try:
@@ -103,7 +115,10 @@ def parse_product(raw: dict[str, Any]) -> Product | None:
         confidence: Literal["stated", "inferred", "ambiguous", "missing"] = (
             "stated" if dims.status == "parsed" else dims.status
         )
-        if dims.status != "parsed":  # fall back to Shopify's inferred specs
+        # Fall back to Shopify's inferred specs when the description gave no size, or only a box,
+        # part or mattress size. Not when it lists several sizes (variants): the specs' one size
+        # could be a different variant.
+        if dims.status == "missing" or dims.reason in RESCUABLE:
             specs = (raw.get("metadata") or {}).get("tech_specs")
             if isinstance(specs, list):
                 inferred = parse_tech_specs([x for x in specs if isinstance(x, str)])

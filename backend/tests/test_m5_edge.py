@@ -46,7 +46,7 @@ def raw(desc: str, metadata: Any = None, title: str = "Test Desk") -> dict[str, 
         ("Dimensions: 120 x 60 x 75 cm", (47.24, 23.62)),
         ("OVERALL DIMENSIONS: 48 x 24 in", (48, 24)),
         ("overall dimensions: 48 × 24 in", (48, 24)),
-        ("Size: 48 x 24 in", (48, 24)),
+        ("Item Size: 48 x 24 in", (48, 24)),
         ("Dimensions: 4 ft x 2 ft", (48, 24)),
         ("Dimensions: 48 1/2 x 24 in", (48.5, 24)),
     ],
@@ -137,14 +137,15 @@ def test_description_wins_over_tech_specs() -> None:
     assert (p.dimensions.w, p.dimensions.d) == (40, 20)
 
 
-def test_ambiguous_description_but_good_specs_is_inferred() -> None:
+def test_a_description_with_several_sizes_is_not_overruled_by_the_specs() -> None:
     p = parse_product(
         raw(
             "Sizes 40 x 20 in or 60 x 30 in",
             {"tech_specs": ["Overall Dimensions: 48 x 24 in"]},
         )
     )
-    assert p and p.dimension_confidence == "inferred" and p.dimension_status == "parsed"
+    # the specs' one size could be a different variant of the listing
+    assert p and p.dimension_confidence == "ambiguous" and p.dimensions is None
 
 
 def test_confidence_always_agrees_with_status() -> None:
