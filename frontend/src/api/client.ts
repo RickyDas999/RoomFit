@@ -1,4 +1,4 @@
-import type { BedChoice, EvaluateResponse, LayoutItem, RecommendResponse, Room } from './types'
+import type { BedChoice, CartSession, EvaluateResponse, LayoutItem, RecommendResponse, Room } from './types'
 
 export class ApiError extends Error {
   status: number
@@ -45,4 +45,29 @@ export function evaluate(room: Room, layout: LayoutItem[]): Promise<EvaluateResp
 /** Search the catalog for each slot and pick the cheapest set that fits. Takes a few seconds. */
 export function recommend(room: Room, bedSize: BedChoice = 'auto'): Promise<RecommendResponse> {
   return post('/api/recommend', { room, bed_size: bedSize })
+}
+
+/** One cart per merchant for the chosen products. Nothing is bought. */
+export async function createCarts(layout: LayoutItem[]): Promise<CartSession[]> {
+  const res = await post<{ sessions: CartSession[] }>('/api/checkout', { layout })
+  return res.sessions
+}
+
+export interface CartRef {
+  domain: string
+  cart_id: string
+}
+
+/** The carts that were really made (not the ones that failed). */
+export const cartRefs = (sessions: CartSession[]): CartRef[] =>
+  sessions.flatMap((s) => (s.status === 'created' && s.cart_id ? [{ domain: s.shop.domain, cart_id: s.cart_id }] : []))
+
+export function cancelCarts(carts: CartRef[]): Promise<{ cancelled: number; failed: number }> {
+  return post('/api/checkout/cancel', { carts })
+}
+
+/** Cancel carts as the page closes: sendBeacon survives the page going away. Best effort. */
+export function cancelCartsOnExit(carts: CartRef[]): void {
+  if (carts.length === 0 || typeof navigator === 'undefined' || !navigator.sendBeacon) return
+  navigator.sendBeacon('/api/checkout/cancel', new Blob([JSON.stringify({ carts })], { type: 'application/json' }))
 }

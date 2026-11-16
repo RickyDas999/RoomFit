@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/api/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Checkout
+         * @description One cart per merchant for the chosen products (quantity 1 each). Nothing is bought.
+         */
+        post: operations["checkout_api_checkout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/checkout/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Checkout
+         * @description Cancel carts made by /api/checkout (manual button, room change, page close).
+         */
+        post: operations["cancel_checkout_api_checkout_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evaluate": {
         parameters: {
             query?: never;
@@ -59,6 +99,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CancelRequest */
+        CancelRequest: {
+            /** Carts */
+            carts: components["schemas"]["CartRef"][];
+        };
+        /** CancelResponse */
+        CancelResponse: {
+            /** Cancelled */
+            cancelled: number;
+            /** Failed */
+            failed: number;
+        };
         /**
          * Candidate
          * @description A searched product the UI may offer as a swap.
@@ -67,6 +119,69 @@ export interface components {
             /** Fits Slot */
             fits_slot: boolean;
             product: components["schemas"]["Product"];
+        };
+        /** CartLine */
+        CartLine: {
+            /** Amount */
+            amount?: number | null;
+            /** Quantity */
+            quantity: number;
+            /** Title */
+            title: string;
+        };
+        /** CartRef */
+        CartRef: {
+            /** Cart Id */
+            cart_id: string;
+            /** Domain */
+            domain: string;
+        };
+        /** CartSession */
+        CartSession: {
+            /** Cart Id */
+            cart_id?: string | null;
+            /** Continue Url */
+            continue_url?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["CartLine"][];
+            /**
+             * Messages
+             * @default []
+             */
+            messages: components["schemas"]["Message"][];
+            shop: components["schemas"]["Shop"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "created" | "error";
+            /**
+             * Totals
+             * @default []
+             */
+            totals: components["schemas"]["Total"][];
+        };
+        /** CheckoutRequest */
+        CheckoutRequest: {
+            /** Layout */
+            layout: components["schemas"]["LayoutItem"][];
+        };
+        /** CheckoutResponse */
+        CheckoutResponse: {
+            /**
+             * Notice
+             * @default Prototype: purchase disabled
+             */
+            notice: string;
+            /** Sessions */
+            sessions: components["schemas"]["CartSession"][];
         };
         /** Dimensions */
         Dimensions: {
@@ -174,6 +289,24 @@ export interface components {
              * @enum {string}
              */
             slot_id: "bed" | "desk" | "desk_chair" | "dresser" | "nightstand";
+        };
+        /** Message */
+        Message: {
+            /**
+             * Code
+             * @default
+             */
+            code: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Type
+             * @default info
+             */
+            type: string;
         };
         /** Price */
         Price: {
@@ -355,6 +488,18 @@ export interface components {
              */
             role: "bed" | "desk" | "desk_chair" | "dresser" | "nightstand";
         };
+        /** Total */
+        Total: {
+            /** Amount */
+            amount: number;
+            /**
+             * Display Text
+             * @default
+             */
+            display_text: string;
+            /** Type */
+            type: string;
+        };
         /** Unplaced */
         Unplaced: {
             /** Reason */
@@ -415,6 +560,72 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    checkout_api_checkout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_checkout_api_checkout_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     evaluate_api_evaluate_post: {
         parameters: {
             query?: never;

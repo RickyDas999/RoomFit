@@ -5,10 +5,11 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.beds import BedChoice, BedSize, label, matches_size, sizes_that_fit
-from app.catalog import CatalogClient, CatalogError, Product
+from app.cart import MAX_SHOPS, CartClient, CartSession, create_carts
+from app.catalog import CatalogClient, CatalogError, Product, Shop
 from app.fit import (
     Evaluation,
     Footprints,
@@ -342,3 +343,62 @@ async def recommend(
         bed_size=bed_size,
         bed_size_reason=bed_reason,
     )
+
+
+# --- carts per merchant (the checkout step; no purchase, see app/cart.py) ---
+
+
+@lru_cache
+def get_cart_client() -> CartClient:
+    return CartClient.from_env()
+
+
+class CheckoutRequest(BaseModel):
+    layout: list[LayoutItem] = Field(max_length=20)  # the room has five slots; no way to inflate a cart
+
+
+class CheckoutResponse(BaseModel):
+    sessions: list[CartSession]  # one per merchant
+    notice: str = "Prototype: purchase disabled"
+
+
+@app.post("/api/checkout")
+async def checkout(
+    req: CheckoutRequest, carts: Annotated[CartClient, Depends(get_cart_client)]
+) -> CheckoutResponse:
+    """One cart per merchant for the chosen products (quantity 1 each). Nothing is bought."""
+    groups: dict[str, tuple[Shop, dict[str, int]]] = {}
+    for item in req.layout:
+        shop = item.product.shop.model_copy(
+            update={"domain": item.product.shop.domain.strip().lower()}
+        )
+        _, variants = groups.setdefault(shop.domain, (shop, {}))
+        variants[item.product.variant_id] = variants.get(item.product.variant_id, 0) + 1
+    if len(groups) > MAX_SHOPS:
+        raise HTTPException(422, f"at most {MAX_SHOPS} merchants at a time")
+    return CheckoutResponse(sessions=await create_carts(carts, groups))
+
+
+class CartRef(BaseModel):
+    domain: str
+    cart_id: str
+
+
+class CancelRequest(BaseModel):
+    carts: list[CartRef] = Field(max_length=MAX_SHOPS)
+
+
+class CancelResponse(BaseModel):
+    cancelled: int
+    failed: int
+
+
+@app.post("/api/checkout/cancel")
+async def cancel_checkout(
+    req: CancelRequest, carts: Annotated[CartClient, Depends(get_cart_client)]
+) -> CancelResponse:
+    """Cancel carts made by /api/checkout (manual button, room change, page close)."""
+    done = await asyncio.gather(
+        *(carts.cancel(c.domain.strip().lower(), c.cart_id) for c in req.carts)
+    )
+    return CancelResponse(cancelled=sum(done), failed=len(done) - sum(done))

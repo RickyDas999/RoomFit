@@ -1,6 +1,41 @@
 {
   "components": {
     "schemas": {
+      "CancelRequest": {
+        "properties": {
+          "carts": {
+            "items": {
+              "$ref": "#/components/schemas/CartRef"
+            },
+            "maxItems": 10,
+            "title": "Carts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "carts"
+        ],
+        "title": "CancelRequest",
+        "type": "object"
+      },
+      "CancelResponse": {
+        "properties": {
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cancelled",
+          "failed"
+        ],
+        "title": "CancelResponse",
+        "type": "object"
+      },
       "Candidate": {
         "description": "A searched product the UI may offer as a swap.",
         "properties": {
@@ -17,6 +52,180 @@
           "fits_slot"
         ],
         "title": "Candidate",
+        "type": "object"
+      },
+      "CartLine": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "quantity"
+        ],
+        "title": "CartLine",
+        "type": "object"
+      },
+      "CartRef": {
+        "properties": {
+          "cart_id": {
+            "title": "Cart Id",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "cart_id"
+        ],
+        "title": "CartRef",
+        "type": "object"
+      },
+      "CartSession": {
+        "properties": {
+          "cart_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cart Id"
+          },
+          "continue_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Continue Url"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "lines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CartLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "messages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "shop": {
+            "$ref": "#/components/schemas/Shop"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "totals": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Total"
+            },
+            "title": "Totals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "shop",
+          "status"
+        ],
+        "title": "CartSession",
+        "type": "object"
+      },
+      "CheckoutRequest": {
+        "properties": {
+          "layout": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutItem"
+            },
+            "maxItems": 20,
+            "title": "Layout",
+            "type": "array"
+          }
+        },
+        "required": [
+          "layout"
+        ],
+        "title": "CheckoutRequest",
+        "type": "object"
+      },
+      "CheckoutResponse": {
+        "properties": {
+          "notice": {
+            "default": "Prototype: purchase disabled",
+            "title": "Notice",
+            "type": "string"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/CartSession"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "CheckoutResponse",
         "type": "object"
       },
       "Dimensions": {
@@ -322,6 +531,27 @@
           "product"
         ],
         "title": "LayoutItem",
+        "type": "object"
+      },
+      "Message": {
+        "properties": {
+          "code": {
+            "default": "",
+            "title": "Code",
+            "type": "string"
+          },
+          "content": {
+            "default": "",
+            "title": "Content",
+            "type": "string"
+          },
+          "type": {
+            "default": "info",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "Message",
         "type": "object"
       },
       "Price": {
@@ -861,6 +1091,29 @@
         "title": "Slot",
         "type": "object"
       },
+      "Total": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "display_text": {
+            "default": "",
+            "title": "Display Text",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "amount"
+        ],
+        "title": "Total",
+        "type": "object"
+      },
       "Unplaced": {
         "properties": {
           "reason": {
@@ -1000,6 +1253,84 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/checkout": {
+      "post": {
+        "description": "One cart per merchant for the chosen products (quantity 1 each). Nothing is bought.",
+        "operationId": "checkout_api_checkout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Checkout"
+      }
+    },
+    "/api/checkout/cancel": {
+      "post": {
+        "description": "Cancel carts made by /api/checkout (manual button, room change, page close).",
+        "operationId": "cancel_checkout_api_checkout_cancel_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Checkout"
+      }
+    },
     "/api/evaluate": {
       "post": {
         "operationId": "evaluate_api_evaluate_post",
