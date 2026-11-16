@@ -75,7 +75,8 @@ def listing(
     p = product(pid, 5300, (40, 20)).model_copy(
         update={
             "variant_id": variant
-            or f"gid://shopify/ProductVariant/{abs(hash(pid)) % 10**9}",
+            if variant is not None
+            else f"gid://shopify/ProductVariant/{abs(hash(pid)) % 10**9}",
             "shop": Shop(
                 id=shop_id or f"gid://shopify/Shop/{domain}", name=domain, domain=domain
             ),
