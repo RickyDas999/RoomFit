@@ -388,3 +388,33 @@ describe('scenarios, needs and bed size', () => {
     expect(within(screen.getByTestId('slot-desk')).getByText(/on the door wall/)).toBeInTheDocument()
   })
 })
+
+describe('M5: data gap and rotation reach the screen', () => {
+  it('shows the data-gap numbers after a search, per slot and for the whole search', async () => {
+    mockApi({
+      recommend: () =>
+        json(makeRecommend({ searched: { desk: { found: 25, with_dimensions: 9, fit_slot: 5, stated: 6, inferred: 3, ambiguous: 4, missing: 12 } } })),
+    })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    expect(screen.queryByTestId('data-gap')).not.toBeInTheDocument()
+    fireEvent.click(findButton())
+    expect(await screen.findByText('Of 25 desks Shopify returned, 9 list usable dimensions (6 stated, 3 inferred).')).toBeInTheDocument()
+    expect(screen.getByTestId('data-gap')).toHaveTextContent('Shopify returned 25 listings. Only 9 list usable dimensions.')
+  })
+
+  it('says which pieces were turned, and drops the note after a swap that is not turned', async () => {
+    mockApi({
+      recommend: () => json(makeRecommend({ rotated: ['desk'] })),
+      evaluate: (b) => json(makePlan(b.layout.length ? { rotated: [] } : {})),
+    })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(findButton())
+    expect(await within(await screen.findByTestId('slot-desk')).findByText(/Turned 90°/)).toBeInTheDocument()
+    expect(within(screen.getByTestId('slot-bed')).queryByText(/Turned 90°/)).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByTestId('slot-desk')).getByRole('button', { name: /Swap/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Use Big corner desk/ }))
+    await waitFor(() => expect(within(screen.getByTestId('slot-desk')).queryByText(/Turned 90°/)).not.toBeInTheDocument())
+  })
+})

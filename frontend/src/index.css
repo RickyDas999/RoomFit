@@ -588,3 +588,12 @@ button.link {
     transition: opacity 0.2s;
   }
 }
+
+.badge--inferred {
+  background: var(--warn-bg);
+  color: var(--warn);
+  margin-left: 0.25rem;
+}
+.datagap {
+  margin: 0.25rem 0;
+}

@@ -21,8 +21,11 @@ async def main() -> None:
         why = Counter(
             p.dimension_reason for p in products if p.dimension_status != "parsed"
         )
+        by = Counter(p.dimension_confidence for p in products)
         print(
-            f"{role:11} {n_ok} of {len(products)} had parseable dimensions   not parsed: {dict(why)}"
+            f"{role:11} {n_ok} of {len(products)} had usable dimensions "
+            f"(stated {by['stated']}, inferred {by['inferred']}, "
+            f"ambiguous {by['ambiguous']}, missing {by['missing']})   not parsed: {dict(why)}"
         )
         total, parsed = total + len(products), parsed + n_ok
     print(f"\nTOTAL: {parsed} of {total} products had parseable dimensions")

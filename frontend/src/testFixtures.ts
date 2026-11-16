@@ -17,12 +17,13 @@ export function makeProduct(id: string, over: Partial<Product> = {}): Product {
     dimension_source: '48" x 24" x 30"',
     dimension_status: 'parsed',
     dimension_reason: null,
+    dimension_confidence: 'stated',
     ...over,
   }
 }
 
 export const missing = (id: string, reason: Product['dimension_reason'] = 'no_dimensions'): Product =>
-  makeProduct(id, { dimensions: null, dimension_source: null, dimension_status: 'missing', dimension_reason: reason })
+  makeProduct(id, { dimensions: null, dimension_source: null, dimension_status: 'missing', dimension_reason: reason, dimension_confidence: 'missing' })
 
 export function makeSlots(over: Partial<Record<Role, Partial<Slot>>> = {}): Slot[] {
   return ROLES.map((role) => ({
@@ -55,6 +56,7 @@ export function makePlan(over: Partial<EvaluateResponse> = {}): EvaluateResponse
     evaluation: { hard_fails: [], coverage_pct: 20.8, coverage_status: 'ok', missing_needs: [], verdict: 'fits' },
     zones: [zone('path_from_door', false, 0, { x: 54, y: 0, w: 36, d: 96 }), zone('behind_desk_chair')],
     unplaced: [],
+    rotated: [],
     ...over,
   }
 }

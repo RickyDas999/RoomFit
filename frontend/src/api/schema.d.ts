@@ -108,6 +108,11 @@ export interface components {
             placed: {
                 [key: string]: components["schemas"]["Rect"];
             };
+            /**
+             * Rotated
+             * @default []
+             */
+            rotated: ("bed" | "desk" | "desk_chair" | "dresser" | "nightstand")[];
             /** Slots */
             slots: components["schemas"]["Slot"][];
             /** Unplaced */
@@ -162,6 +167,8 @@ export interface components {
              */
             footprint_basis: "parsed" | "assumed";
             product: components["schemas"]["Product"];
+            /** Rotated */
+            rotated?: boolean | null;
             /**
              * Slot Id
              * @enum {string}
@@ -179,8 +186,14 @@ export interface components {
         Product: {
             /** Description */
             description: string;
+            /**
+             * Dimension Confidence
+             * @default missing
+             * @enum {string}
+             */
+            dimension_confidence: "stated" | "inferred" | "ambiguous" | "missing";
             /** Dimension Reason */
-            dimension_reason?: ("no_dimensions" | "no_unit" | "shipping_size" | "mattress_size" | "component_only" | "range" | "incomplete" | "multiple_sizes" | "conflicting_labels" | "implausible" | "quantity" | "too_many_values") | null;
+            dimension_reason?: ("no_dimensions" | "no_unit" | "shipping_size" | "mattress_size" | "component_only" | "range" | "incomplete" | "multiple_sizes" | "conflicting_labels" | "implausible" | "quantity" | "too_many_values" | "size_mismatch") | null;
             /** Dimension Source */
             dimension_source?: string | null;
             /**
@@ -232,6 +245,11 @@ export interface components {
             placed: {
                 [key: string]: components["schemas"]["Rect"];
             };
+            /**
+             * Rotated
+             * @default []
+             */
+            rotated: ("bed" | "desk" | "desk_chair" | "dresser" | "nightstand")[];
             /** Searched */
             searched: {
                 [key: string]: components["schemas"]["SearchStats"];
@@ -273,10 +291,30 @@ export interface components {
         };
         /** SearchStats */
         SearchStats: {
+            /**
+             * Ambiguous
+             * @default 0
+             */
+            ambiguous: number;
             /** Fit Slot */
             fit_slot: number;
             /** Found */
             found: number;
+            /**
+             * Inferred
+             * @default 0
+             */
+            inferred: number;
+            /**
+             * Missing
+             * @default 0
+             */
+            missing: number;
+            /**
+             * Stated
+             * @default 0
+             */
+            stated: number;
             /** With Dimensions */
             with_dimensions: number;
         };
