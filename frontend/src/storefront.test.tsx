@@ -34,6 +34,7 @@ describe('the store around the Room Planner is for show only', () => {
       </>,
     )
     expect(container.querySelector('.announce')).toHaveAttribute('aria-hidden', 'true')
+    expect(container.querySelector('.store-header')).toHaveAttribute('aria-hidden', 'true') // no second banner landmark
     expect(container.querySelector('.store-header__nav')).toHaveAttribute('aria-hidden', 'true')
     expect(container.querySelector('.store-header__tools')).toHaveAttribute('aria-hidden', 'true')
     expect(container.querySelector('.store-footer')).toHaveAttribute('aria-hidden', 'true')
@@ -52,6 +53,11 @@ describe('the store around the Room Planner is for show only', () => {
     const store = container.querySelectorAll('.announce, .store-header, .store-footer')
     store.forEach((el) => expect(el.querySelectorAll(FOCUSABLE)).toHaveLength(0))
     expect(await screen.findByTestId('floorplan')).toBeInTheDocument()
+  })
+
+  it('has no banner landmark of its own besides the hidden store header', () => {
+    render(<App />)
+    expect(screen.queryAllByRole('banner')).toHaveLength(0)
   })
 
   it('keeps the single page-level heading the Room Planner (the store name is not a heading)', () => {

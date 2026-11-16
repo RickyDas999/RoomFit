@@ -15,7 +15,7 @@ export function StoreHeader() {
       <div className="announce" aria-hidden="true">
         Free shipping on orders over $99
       </div>
-      <header className="store-header">
+      <header className="store-header" aria-hidden="true">
         <div className="store-header__inner">
           <p className="store-header__logo">{STORE_NAME}</p>
           <ul className="store-header__nav" aria-hidden="true">

@@ -205,13 +205,13 @@ export default function App() {
         <p className="crumbs" aria-hidden="true">
           Home / Room Planner
         </p>
-        <header className="app__header">
+        <div className="app__header">
           <h1>Room Planner</h1>
           <p className="lead">
             Tell us the size of your room, where the door and window are, and what you need. We pick real furniture that fits and leaves space to walk around it.
           </p>
           <p className="prototype-note">This is a prototype of the Room Planner inside a merchant’s online store. The store name, menu and links around it are placeholders.</p>
-        </header>
+        </div>
 
       <main className="app__grid">
         <section className="panel panel--form" aria-label="Room">

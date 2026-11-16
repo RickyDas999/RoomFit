@@ -12,6 +12,7 @@
   --muted: #66665f;
   --line: #e2e2dd;
   --line-strong: #c9c9c2;
+  --control-line: #85857d; /* borders of fields and lists: 3.7:1 on white */
   --accent: #234e45; /* pine: links, focus, "fits" */
   --accent-wash: #e8f0ec;
   --warn: #7a5200;
@@ -43,6 +44,10 @@
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: 5.5rem; /* the sticky header must not cover a focused field */
 }
 
 body {
@@ -130,11 +135,13 @@ a {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 1.5rem;
+  min-width: 0;
 }
 
 .store-header__logo {
   font-size: 1.5rem;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .store-header__nav {
@@ -165,7 +172,16 @@ a {
     display: none;
   }
   .store-header__inner {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .store-header__logo {
+    font-size: 1.25rem;
+  }
+  .store-header__tools {
+    gap: 0.9rem;
   }
 }
 
@@ -313,7 +329,7 @@ select {
   font: inherit;
   color: inherit;
   background: var(--paper);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-line);
   border-radius: 4px;
 }
 
@@ -370,7 +386,7 @@ button:hover:not(:disabled) {
 }
 
 button:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -809,7 +825,7 @@ button.link:hover:not(:disabled) {
   margin: 0.5rem 0 0;
   max-height: 24rem;
   overflow: auto;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-line);
 }
 
 .candidate {
