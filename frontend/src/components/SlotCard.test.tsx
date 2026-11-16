@@ -34,10 +34,11 @@ describe('SlotCard product', () => {
     expect(screen.queryByText(/ in$/)).toBeNull()
   })
 
-  it('treats an unclear listing the same as a missing one', () => {
-    const unclear = makeProduct('u', { dimensions: null, dimension_status: 'ambiguous', dimension_reason: 'shipping_size' })
+  it('says "size unclear" (not "missing") for a listing with a size we cannot trust, and still places nothing', () => {
+    const unclear = makeProduct('u', { dimensions: null, dimension_status: 'ambiguous', dimension_reason: 'shipping_size', dimension_confidence: 'ambiguous' })
     render(<SlotCard {...base} item={item(unclear)} />)
-    expect(screen.getByText('dimensions missing')).toBeInTheDocument()
+    expect(screen.getByText('size unclear')).toBeInTheDocument()
+    expect(screen.queryByText('dimensions missing')).toBeNull()
     expect(screen.getByText('only a shipping or box size')).toBeInTheDocument()
   })
 
