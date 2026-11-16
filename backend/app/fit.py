@@ -77,6 +77,12 @@ def orient(d: Dimensions) -> tuple[float, float]:
     return max(d.w, d.d), min(d.w, d.d)
 
 
+def orientations(d: Dimensions) -> list[tuple[float, float]]:
+    """Both ways to stand a piece: long side along the wall first, then turned 90 degrees."""
+    a, b = orient(d)
+    return [(a, b)] if a == b else [(a, b), (b, a)]
+
+
 def _box(
     sp: SlotPlan, along: float, across: float, origin: tuple[float, float] | None = None
 ) -> Rect:
@@ -139,6 +145,18 @@ def _free(r: Rect, direction: str, obstacles: list[Rect], W: float, D: float) ->
     return max(best, 0.0)
 
 
+def _bed_sides(bed: Rect) -> tuple[str, str]:
+    """The two long sides of the bed. Normally it runs up and down (sides left and right); a bed
+    turned 90 degrees runs across the room (sides above and below)."""
+    return ("-x", "+x") if bed.d >= bed.w else ("-y", "+y")
+
+
+def _front_sides(dresser: Rect) -> tuple[str, ...]:
+    """Where a dresser's drawers face: down the room when it lies along the wall, to either side
+    when it is turned 90 degrees (its long side is then its front)."""
+    return ("+y",) if dresser.w >= dresser.d else ("-x", "+x")
+
+
 def _fail(rule: str, pieces: list[str], short: float, text: str) -> HardFail:
     short = round(short, 2)
     return HardFail.model_validate(
@@ -193,13 +211,16 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
         # the nightstand at the bed's head does not count as blocking the open side
         bed = placed["bed"]
         obs = [r for n, r in pieces.items() if n not in ("bed", "nightstand")]
-        best = max(_free(bed, "-x", obs, W, D), _free(bed, "+x", obs, W, D))
+        best = max(_free(bed, side, obs, W, D) for side in _bed_sides(bed))
         if best + EPS < BED_OPEN_SIDE:
             fails.append(
                 _fail("bed_open_side", ["bed"], BED_OPEN_SIDE - best, "open side of the bed: {short} in short")
             )
     if "dresser" in placed:  # the dresser stands on the top wall and faces down
-        free = _free(placed["dresser"], "+y", obstacles_for("dresser"), W, D)
+        free = max(
+            _free(placed["dresser"], side, obstacles_for("dresser"), W, D)
+            for side in _front_sides(placed["dresser"])
+        )
         if free + EPS < FRONT_CLEARANCE:
             fails.append(
                 _fail(
@@ -279,13 +300,28 @@ def zones_for(plan: Plan, placed: dict[Role, Rect], ev: Evaluation) -> list[Zone
         obs = [r for n, r in placed.items() if n not in ("bed", "nightstand")]
         if plan.closet:
             obs.append(plan.closet)
-        left = _free(bed, "-x", obs, plan.W, plan.D)
-        right = _free(bed, "+x", obs, plan.W, plan.D)
-        x = bed.x - BED_OPEN_SIDE if left >= right else bed.x2
-        add("bed_open_side", Rect(x=x, y=bed.y, w=BED_OPEN_SIDE, d=bed.d))
+        minus, plus = _bed_sides(bed)
+        open_side = plus if _free(bed, plus, obs, plan.W, plan.D) > _free(bed, minus, obs, plan.W, plan.D) else minus
+        if open_side == "-x":
+            add("bed_open_side", Rect(x=bed.x - BED_OPEN_SIDE, y=bed.y, w=BED_OPEN_SIDE, d=bed.d))
+        elif open_side == "+x":
+            add("bed_open_side", Rect(x=bed.x2, y=bed.y, w=BED_OPEN_SIDE, d=bed.d))
+        elif open_side == "-y":
+            add("bed_open_side", Rect(x=bed.x, y=bed.y - BED_OPEN_SIDE, w=bed.w, d=BED_OPEN_SIDE))
+        else:
+            add("bed_open_side", Rect(x=bed.x, y=bed.y2, w=bed.w, d=BED_OPEN_SIDE))
     if "dresser" in placed:
         d = placed["dresser"]
-        add("in_front_of_dresser", Rect(x=d.x, y=d.y2, w=d.w, d=FRONT_CLEARANCE))
+        sides = _front_sides(d)
+        if sides == ("+y",):
+            add("in_front_of_dresser", Rect(x=d.x, y=d.y2, w=d.w, d=FRONT_CLEARANCE))
+        else:  # turned: shade the more open side
+            obs_d = [r for n, r in placed.items() if n != "dresser"]
+            if plan.closet:
+                obs_d.append(plan.closet)
+            left, right = (_free(d, side, obs_d, plan.W, plan.D) for side in sides)
+            x = d.x2 if right > left else d.x - FRONT_CLEARANCE
+            add("in_front_of_dresser", Rect(x=x, y=d.y, w=FRONT_CLEARANCE, d=d.d))
     if plan.closet_front:
         add("in_front_of_closet", plan.closet_front)
     if "desk_chair" in placed:

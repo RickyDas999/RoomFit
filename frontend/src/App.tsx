@@ -5,7 +5,7 @@ import { ROLES } from './api/types'
 import { CoverageMeter, FlagsList, Verdict } from './components/Flags'
 import { FloorPlan } from './components/FloorPlan'
 import { RoomFormView } from './components/RoomForm'
-import { SlotCard } from './components/SlotCard'
+import { DataGap, SlotCard } from './components/SlotCard'
 import { SAMPLE_FORM, toRoom, validate, type RoomForm } from './room'
 
 /** What is on screen: one room, the checked plan for it, and the chosen products. */
@@ -75,7 +75,7 @@ export default function App() {
       if (mine !== latest.current) return
       setView({
         room,
-        plan: { slots: res.slots, placed: res.placed, evaluation: res.evaluation, zones: res.zones, unplaced: res.unplaced },
+        plan: { slots: res.slots, placed: res.placed, evaluation: res.evaluation, zones: res.zones, unplaced: res.unplaced, rotated: res.rotated },
         layout: res.layout,
         rec: { candidates: res.candidates, searched: res.searched, sorted_by: res.sorted_by, bed_size_reason: res.bed_size_reason },
       })
@@ -155,6 +155,7 @@ export default function App() {
 
         <section className="panel panel--slots" aria-label="Furniture">
           <h2>Furniture</h2>
+          {view?.rec && <DataGap searched={view.rec.searched} />}
           {view?.rec === null && view.layout.length === 0 && <p className="hint">Press “Find furniture that fits” to search for real products.</p>}
           {view &&
             ROLES.filter((r) => wanted(r, form)).map((role) => {
@@ -166,6 +167,8 @@ export default function App() {
                   slot={slot}
                   item={view.layout.find((i) => i.slot_id === role)}
                   unplacedReason={view.plan.unplaced.find((u) => u.slot_id === role)?.reason}
+                  rotated={view.plan.rotated?.includes(role)}
+                  gap={view.rec?.searched[role]}
                   explain={role === 'bed' ? view.rec?.bed_size_reason : null}
                   candidates={candidates(role)}
                   busy={busy !== 'idle'}

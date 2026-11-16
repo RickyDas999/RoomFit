@@ -96,7 +96,7 @@ def test_twin_may_sit_against_a_wall_one_open_side_is_enough() -> None:
 
 
 def test_bed_with_no_open_side_fails_by_the_full_clearance() -> None:
-    bed = Rect(x=0, y=100, w=144, d=40)  # wall to wall
+    bed = Rect(x=0, y=0, w=144, d=190)  # wall to wall, running up and down
     assert shorts({"bed": bed})["bed_open_side"] == 24
 
 
@@ -209,3 +209,59 @@ def test_verdict(fail: bool, missing: list[str], cov: float, expected: str) -> N
 def test_orient_puts_the_long_side_along_the_wall() -> None:
     assert orient(Dimensions(w=40.1, d=81.4)) == (81.4, 40.1)
     assert orient(Dimensions(w=81.4, d=40.1)) == (81.4, 40.1)
+
+
+# --- turned pieces: the clearance follows the piece, not the screen axes ---
+
+
+def test_a_bed_turned_across_the_room_needs_its_open_side_above_or_below() -> None:
+    # runs left to right along the bottom wall: its long sides face up (free) and down (the wall)
+    turned = Rect(x=60, y=152, w=80, d=40)
+    assert "bed_open_side" not in shorts({"bed": turned})  # 152 in free above it
+    from app.fit import zones_for
+
+    zone = next(
+        z
+        for z in zones_for(
+            PLAN, {"bed": turned}, evaluate_placed(PLAN, {"bed": turned})
+        )
+        if z.rule == "bed_open_side"
+    )
+    assert (
+        zone.rect.y2 == 152 and zone.rect.w == 80
+    )  # shaded above the bed, along its long side
+
+
+def test_a_turned_bed_with_both_long_sides_blocked_fails() -> None:
+    turned = Rect(x=60, y=100, w=80, d=40)
+    above = Rect(x=60, y=90, w=80, d=10)  # a wall of furniture right above it
+    below = Rect(x=60, y=140, w=80, d=10)  # and right below it
+    assert (
+        shorts({"bed": turned, "desk": above, "dresser": below})["bed_open_side"] == 24
+    )
+
+
+def test_a_turned_bed_is_not_failed_for_tight_ends() -> None:
+    # the same bed upright with 4 in on each long side would fail; turned, its ends are the 4 in
+    upright = Rect(x=4, y=100, w=40, d=80)
+    wall_r = Rect(x=44 + 4, y=100, w=96, d=80)  # blocks the right side 4 in away
+    assert shorts({"bed": upright, "dresser": wall_r}).get("bed_open_side") == 20
+
+
+def test_a_turned_dresser_needs_clearance_at_its_side_not_below() -> None:
+    from app.fit import zones_for
+
+    turned = Rect(x=100, y=0, w=20, d=60)  # long side against... sticking down the room
+    ev = evaluate_placed(PLAN, {"dresser": turned})
+    assert "in_front_of_dresser" not in {
+        f.rule for f in ev.hard_fails
+    }  # open on its left/right
+    assert any(
+        z.rule == "in_front_of_dresser"
+        for z in zones_for(PLAN, {"dresser": turned}, ev)
+    )
+    boxed = [Rect(x=76, y=0, w=24, d=60), Rect(x=120, y=0, w=24, d=60)]
+    ev2 = evaluate_placed(
+        PLAN, {"dresser": turned, "desk": boxed[0], "nightstand": boxed[1]}
+    )
+    assert any(f.rule == "in_front_of_dresser" for f in ev2.hard_fails)

@@ -131,6 +131,21 @@
             "title": "Placed",
             "type": "object"
           },
+          "rotated": {
+            "default": [],
+            "items": {
+              "enum": [
+                "bed",
+                "desk",
+                "desk_chair",
+                "dresser",
+                "nightstand"
+              ],
+              "type": "string"
+            },
+            "title": "Rotated",
+            "type": "array"
+          },
           "slots": {
             "items": {
               "$ref": "#/components/schemas/Slot"
@@ -279,6 +294,17 @@
           "product": {
             "$ref": "#/components/schemas/Product"
           },
+          "rotated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotated"
+          },
           "slot_id": {
             "enum": [
               "bed",
@@ -322,6 +348,17 @@
             "title": "Description",
             "type": "string"
           },
+          "dimension_confidence": {
+            "default": "missing",
+            "enum": [
+              "stated",
+              "inferred",
+              "ambiguous",
+              "missing"
+            ],
+            "title": "Dimension Confidence",
+            "type": "string"
+          },
           "dimension_reason": {
             "anyOf": [
               {
@@ -337,7 +374,8 @@
                   "conflicting_labels",
                   "implausible",
                   "quantity",
-                  "too_many_values"
+                  "too_many_values",
+                  "size_mismatch"
                 ],
                 "type": "string"
               },
@@ -536,6 +574,21 @@
             "title": "Placed",
             "type": "object"
           },
+          "rotated": {
+            "default": [],
+            "items": {
+              "enum": [
+                "bed",
+                "desk",
+                "desk_chair",
+                "dresser",
+                "nightstand"
+              ],
+              "type": "string"
+            },
+            "title": "Rotated",
+            "type": "array"
+          },
           "searched": {
             "additionalProperties": {
               "$ref": "#/components/schemas/SearchStats"
@@ -678,12 +731,32 @@
       },
       "SearchStats": {
         "properties": {
+          "ambiguous": {
+            "default": 0,
+            "title": "Ambiguous",
+            "type": "integer"
+          },
           "fit_slot": {
             "title": "Fit Slot",
             "type": "integer"
           },
           "found": {
             "title": "Found",
+            "type": "integer"
+          },
+          "inferred": {
+            "default": 0,
+            "title": "Inferred",
+            "type": "integer"
+          },
+          "missing": {
+            "default": 0,
+            "title": "Missing",
+            "type": "integer"
+          },
+          "stated": {
+            "default": 0,
+            "title": "Stated",
             "type": "integer"
           },
           "with_dimensions": {

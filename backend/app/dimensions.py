@@ -26,6 +26,7 @@ Reason = Literal[
     "implausible",
     "quantity",
     "too_many_values",
+    "size_mismatch",
 ]
 
 
@@ -272,4 +273,70 @@ def parse_dimensions(text: str) -> ParseResult:
         )
     if rejected:
         return ParseResult(status="ambiguous", reason=rejected[0])
+    return ParseResult(status="missing", reason="no_dimensions")
+
+
+# --- Shopify's ML-inferred `metadata.tech_specs`: a list like "Overall Dimensions: 48 x 24 x 30 in" ---
+_SPEC_LABEL_OK = re.compile(
+    r"^(?:(?:overall|assembled|product|item|frame|bed frame)\s+)?dimensions?$"
+    r"|^(?:overall|assembled|product|item|frame|bed frame)\s+size$",
+    re.IGNORECASE,
+)  # a bare "Size" or "Bed Size" is usually the mattress, so it does not count
+_SPEC_LABEL_NO = re.compile(
+    r"drawer|interior|inner|shelf|legroom|keyboard|package|packag|box|carton|shipping|"
+    r"mattress|headboard|footboard|seat|monitor|range|weight|capacity|desktop|tabletop|storage|slat",
+    re.IGNORECASE,
+)
+# What may sit in brackets after the label: the order of the numbers, a unit, or "mattress not
+# included". Anything else ("Chair", "Each", "Folded") is a different thing than the product.
+_SPEC_QUALIFIER_OK = re.compile(
+    r"^(?:[lwdh](?:\s*[x×✕*,/.-]\s*[lwdh])*|in(?:ch(?:es)?)?|cm|mm|ft|assembled|overall|approx\.?"
+    r"|(?:mattress|box spring)s? not included|(?:without|no|excluding) (?:the )?mattress)$",
+    re.IGNORECASE,
+)
+_SIZE_NAME = re.compile(r"\b(?:twin|full|queen|king)\b", re.IGNORECASE)
+
+
+def _spec_value(line: str) -> str | None:
+    """The value of an overall-size line, or None if the line is about something else."""
+    label, sep, value = line.partition(":")
+    if not sep:
+        return None
+    base, paren, rest = label.partition("(")
+    if paren:
+        qualifier = rest.rsplit(")", 1)[0].strip()
+        if not _SPEC_QUALIFIER_OK.match(qualifier):
+            return None
+    base = base.strip()
+    if _SPEC_LABEL_NO.search(base) or not _SPEC_LABEL_OK.match(base):
+        return None
+    if _SIZE_NAME.search(value):  # "Queen (60 x 80 in)" is a mattress size, not the frame
+        return None
+    return value
+
+
+def parse_tech_specs(specs: list[str]) -> ParseResult:
+    """Read the overall-size line(s) of the tech specs. Same rules as the description parser."""
+    results: list[ParseResult] = []
+    for line in specs:
+        value = _spec_value(line)
+        if value is None:
+            continue
+        r = parse_dimensions(value)
+        if r.status != "missing":
+            results.append(r)
+    parsed = [r for r in results if r.status == "parsed"]
+    if len(parsed) == 1:
+        return parsed[0]
+    if len(parsed) > 1:
+        a = parsed[0].dimensions
+        if a and all(r.dimensions and _same_size(a, r.dimensions) for r in parsed[1:]):
+            return parsed[0]
+        return ParseResult(
+            status="ambiguous",
+            reason="multiple_sizes",
+            candidates=[r.dimensions for r in parsed if r.dimensions],
+        )
+    if results:
+        return results[0]
     return ParseResult(status="missing", reason="no_dimensions")

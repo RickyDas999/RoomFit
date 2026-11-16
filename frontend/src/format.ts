@@ -29,6 +29,7 @@ const REASON_TEXT: Record<string, string> = {
   implausible: 'a size that does not look like furniture',
   quantity: 'a quantity, not a size',
   too_many_values: 'too many numbers',
+  size_mismatch: 'the listed size is smaller than the bed size in its name',
 }
 
 export function reasonText(reason: string | null | undefined): string {
@@ -43,4 +44,13 @@ export function safeUrl(url: string | null | undefined): string | null {
   } catch {
     return null
   }
+}
+
+const PLURAL: Record<string, string> = { bed: 'beds', desk: 'desks', dresser: 'dressers', nightstand: 'nightstands' }
+
+/** "Of 25 desks Shopify returned, 9 list usable dimensions (6 stated, 3 inferred)." */
+export function dataGapText(role: string, s: { found: number; with_dimensions: number; stated?: number; inferred?: number }): string {
+  const what = Object.hasOwn(PLURAL, role) ? PLURAL[role] : 'products'
+  const how = s.inferred ? ` (${s.stated ?? 0} stated, ${s.inferred} inferred)` : ''
+  return `Of ${s.found} ${what} Shopify returned, ${s.with_dimensions} list usable dimensions${how}.`
 }

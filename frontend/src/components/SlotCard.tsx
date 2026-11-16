@@ -1,11 +1,15 @@
 import { useId, useState } from 'react'
-import type { Candidate, LayoutItem, Product, Slot } from '../api/types'
+import type { Candidate, LayoutItem, Product, SearchStats, Slot } from '../api/types'
 import { ROLE_LABEL } from '../api/types'
-import { formatDimensions, formatPrice, reasonText, safeUrl } from '../format'
+import { dataGapText, formatDimensions, formatPrice, reasonText, safeUrl } from '../format'
 
 interface Props {
   /** Why this size or place was chosen (e.g. "Queen: the biggest size that fits this room"). */
   explain?: string | null
+  /** The piece is placed turned 90 degrees (short side along the wall). */
+  rotated?: boolean
+  /** How many of the searched listings had usable dimensions. */
+  gap?: SearchStats
   slot: Slot
   item?: LayoutItem
   /** Why nothing is placed in this slot, if the server said. */
@@ -28,10 +32,16 @@ function Dimensions({ product, assumed, slot }: { product: Product; assumed: boo
     return (
       <p className="dims">
         <strong>{formatDimensions(product.dimensions)}</strong>
+        {product.dimension_confidence === 'inferred' && (
+          <>
+            {' '}
+            <span className="badge badge--inferred">inferred</span>
+          </>
+        )}
         {product.dimension_source && (
           <span className="hint">
             {' '}
-            from the listing: “{product.dimension_source}”
+            {product.dimension_confidence === 'inferred' ? 'guessed by Shopify from the product specs, so it may be wrong' : 'from the listing'}: “{product.dimension_source}”
           </span>
         )}
       </p>
@@ -61,7 +71,20 @@ function ProductSummary({ product, assumed, slot }: { product: Product; assumed:
   )
 }
 
-export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap, explain }: Props) {
+/** The platform's data gap, in numbers, summed over every search. */
+export function DataGap({ searched }: { searched: Partial<Record<string, SearchStats>> }) {
+  const rows = Object.entries(searched).filter(([role, s]) => role !== 'desk_chair' && s)
+  const found = rows.reduce((n, [, s]) => n + (s?.found ?? 0), 0)
+  const usable = rows.reduce((n, [, s]) => n + (s?.with_dimensions ?? 0), 0)
+  if (found === 0) return null
+  return (
+    <p className="datagap" data-testid="data-gap">
+      Shopify returned {found} listings. Only {usable} list usable dimensions.
+    </p>
+  )
+}
+
+export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap, explain, rotated, gap }: Props) {
   const [open, setOpen] = useState(false)
   const listId = useId()
   const label = ROLE_LABEL[slot.role]
@@ -77,6 +100,8 @@ export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap,
       {slot.fits && (slot.note || explain) && <p className="slot__why">{[explain, slot.note].filter(Boolean).join('. ')}</p>}
       {slot.fits && !item && <p className="slot__note">{unplacedReason ?? 'Nothing chosen yet.'}</p>}
       {item && <ProductSummary product={item.product} assumed={assumed} slot={slot} />}
+      {item && rotated && <p className="slot__why">Turned 90°: its short side runs along the wall, which is the way it fits.</p>}
+      {gap && gap.found > 0 && slot.role !== 'desk_chair' && <p className="hint datagap">{dataGapText(slot.role, gap)}</p>}
       {item && unplacedReason && <p className="slot__note">{unplacedReason}</p>}
 
       {slot.fits && candidates.length > 0 && (
@@ -98,7 +123,10 @@ export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap,
                       {slot.role === 'desk_chair' ? null : (
                         <p className="dims">
                           {c.product.dimensions && c.product.dimension_status === 'parsed' ? (
-                            <strong>{formatDimensions(c.product.dimensions)}</strong>
+                            <>
+                              <strong>{formatDimensions(c.product.dimensions)}</strong>
+                              {c.product.dimension_confidence === 'inferred' && <span className="badge badge--inferred">inferred</span>}
+                            </>
                           ) : (
                             <span className="badge badge--missing">dimensions missing</span>
                           )}{' '}

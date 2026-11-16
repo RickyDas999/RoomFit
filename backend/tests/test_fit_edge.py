@@ -412,6 +412,7 @@ def prod(
         description="",
         dimensions=Dimensions(w=dims[0], d=dims[1]) if dims else None,
         dimension_status="parsed" if dims else "missing",
+        dimension_confidence="stated" if dims else "missing",
     )
 
 

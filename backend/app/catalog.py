@@ -15,7 +15,14 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel
 
-from app.dimensions import Dimensions, Reason, parse_dimensions
+from app.beds import title_size_mismatch
+from app.dimensions import (
+    Dimensions,
+    ParseResult,
+    Reason,
+    parse_dimensions,
+    parse_tech_specs,
+)
 from app.search import SEARCH_LIMIT
 
 TOKEN_URL = "https://api.shopify.com/auth/access_token"
@@ -67,11 +74,26 @@ class Product(BaseModel):
     dimension_source: str | None = None  # matched text snippet
     dimension_status: Literal["parsed", "ambiguous", "missing"] = "missing"
     dimension_reason: Reason | None = None  # why not "parsed"
+    # stated: clear size in the description. inferred: from Shopify's ML tech_specs (may be wrong).
+    # ambiguous: something found but not trusted. missing: nothing. Only the first two are placed.
+    dimension_confidence: Literal["stated", "inferred", "ambiguous", "missing"] = "missing"
 
 
 def _plain(text: str) -> str:
     text = re.sub(r"(?is)<(script|style)\b.*?</\1\s*>", " ", text)
     return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", text)).split())
+
+
+# Description reasons the tech specs may overrule (the description names no usable product size).
+RESCUABLE = {
+    "no_unit",
+    "incomplete",
+    "implausible",
+    "range",
+    "shipping_size",
+    "mattress_size",
+    "component_only",
+}
 
 
 def parse_product(raw: dict[str, Any]) -> Product | None:
@@ -88,11 +110,29 @@ def parse_product(raw: dict[str, Any]) -> Product | None:
             "plain", ""
         )
         text = _plain(desc)
+        title = raw.get("title", "")
         dims = parse_dimensions(text)
+        confidence: Literal["stated", "inferred", "ambiguous", "missing"] = (
+            "stated" if dims.status == "parsed" else dims.status
+        )
+        # Fall back to Shopify's inferred specs when the description gave no size, or only a box,
+        # part or mattress size. Not when it lists several sizes (variants): the specs' one size
+        # could be a different variant.
+        if dims.status == "missing" or dims.reason in RESCUABLE:
+            specs = (raw.get("metadata") or {}).get("tech_specs")
+            if isinstance(specs, list):
+                inferred = parse_tech_specs([x for x in specs if isinstance(x, str)])
+                if inferred.status == "parsed":
+                    dims, confidence = inferred, "inferred"
+                elif dims.status == "missing" and inferred.status == "ambiguous":
+                    dims, confidence = inferred, "ambiguous"
+        if dims.dimensions and title_size_mismatch(title, dims.dimensions.w, dims.dimensions.d):
+            dims = ParseResult(status="ambiguous", reason="size_mismatch", source=dims.source)
+            confidence = "ambiguous"
         return Product(
             id=raw["id"],
             variant_id=v["id"],
-            title=raw.get("title", ""),
+            title=title,
             shop=Shop(
                 id=seller["id"], name=seller.get("name", ""), domain=seller.get("domain", "")
             ),
@@ -105,6 +145,7 @@ def parse_product(raw: dict[str, Any]) -> Product | None:
             dimension_source=dims.source,
             dimension_status=dims.status,
             dimension_reason=dims.reason,
+            dimension_confidence=confidence,
         )
     except (KeyError, TypeError, ValueError, AttributeError):  # ValueError covers pydantic
         return None
