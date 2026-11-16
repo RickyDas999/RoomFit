@@ -67,6 +67,24 @@ describe('a badge for every confidence class, in the card and in the swap list',
   })
 })
 
+describe('odd combinations never read as a trusted size', () => {
+  it.each([
+    ['parsed but confidence ambiguous', makeProduct('o1', { dimension_confidence: 'ambiguous' })],
+    ['parsed but confidence missing', makeProduct('o2', { dimension_confidence: 'missing' })],
+    ['status ambiguous with a stated confidence', makeProduct('o3', { dimensions: null, dimension_status: 'ambiguous', dimension_confidence: 'stated' })],
+  ])('%s says "size unclear"', (_n, product) => {
+    render(<SlotCard {...base} item={item(product)} />)
+    expect(screen.getByText('size unclear', { selector: '.badge' })).toBeInTheDocument()
+    expect(screen.queryByText('stated')).not.toBeInTheDocument()
+  })
+
+  it('a placed-looking size with no dimensions at all is "dimensions missing", never "inferred"', () => {
+    render(<SlotCard {...base} item={item(makeProduct('o4', { dimensions: null, dimension_status: 'missing', dimension_confidence: 'inferred' }))} />)
+    expect(screen.getByText('dimensions missing', { selector: '.badge' })).toBeInTheDocument()
+    expect(screen.queryByText('inferred')).not.toBeInTheDocument()
+  })
+})
+
 describe('rotation note', () => {
   it('says a piece is turned 90 degrees, only when it is', () => {
     const { rerender } = render(<SlotCard {...base} item={item()} rotated />)

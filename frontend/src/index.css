@@ -812,13 +812,11 @@ button.link:hover:not(:disabled) {
   background: var(--warn-wash);
   color: var(--warn);
   border-color: transparent;
-  margin-inline-start: 0.25rem;
 }
 
 .badge--stated {
   color: var(--muted);
   border-color: var(--line-strong);
-  margin-inline-start: 0.25rem;
 }
 
 .badge--unclear {

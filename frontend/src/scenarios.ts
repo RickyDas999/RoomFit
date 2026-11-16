@@ -18,6 +18,7 @@ export const SCENARIOS: Scenario[] = [
     form: base,
   },
   {
+    // the same room as NARROW in backend/tests/test_storyboard.py, which pins the demo moment
     id: 'narrow',
     label: 'Narrow bedroom',
     blurb: '10 x 16 ft. The cheapest desk fits. Swap in the big L-shaped desk and the clearance behind the chair and beside the bed break.',

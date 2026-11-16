@@ -21,11 +21,16 @@ interface Props {
 
 /** How far to trust a listing's size: stated, inferred (a guess), unclear or missing. */
 function Confidence({ product }: { product: Product }) {
-  if (!product.dimensions || product.dimension_status !== 'parsed') {
-    const unclear = product.dimension_status === 'ambiguous' || product.dimension_confidence === 'ambiguous'
-    return unclear ? <span className="badge badge--unclear">size unclear</span> : <span className="badge badge--missing">dimensions missing</span>
+  const usable = product.dimensions && product.dimension_status === 'parsed'
+  const unclear = <span className="badge badge--unclear">size unclear</span>
+  if (!usable) {
+    const bad = product.dimension_status === 'ambiguous' || product.dimension_confidence === 'ambiguous'
+    return bad ? unclear : <span className="badge badge--missing">dimensions missing</span>
   }
-  return product.dimension_confidence === 'inferred' ? <span className="badge badge--inferred">inferred</span> : <span className="badge badge--stated">stated</span>
+  // only a size we know to be stated or inferred is shown as trusted; anything else is unclear
+  if (product.dimension_confidence === 'stated') return <span className="badge badge--stated">stated</span>
+  if (product.dimension_confidence === 'inferred') return <span className="badge badge--inferred">inferred</span>
+  return unclear
 }
 
 function Dimensions({ product, assumed, slot }: { product: Product; assumed: boolean; slot: Slot }) {
