@@ -15,7 +15,14 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel
 
-from app.dimensions import Dimensions, Reason, parse_dimensions
+from app.beds import title_size_mismatch
+from app.dimensions import (
+    Dimensions,
+    ParseResult,
+    Reason,
+    parse_dimensions,
+    parse_tech_specs,
+)
 from app.search import SEARCH_LIMIT
 
 TOKEN_URL = "https://api.shopify.com/auth/access_token"
@@ -67,6 +74,9 @@ class Product(BaseModel):
     dimension_source: str | None = None  # matched text snippet
     dimension_status: Literal["parsed", "ambiguous", "missing"] = "missing"
     dimension_reason: Reason | None = None  # why not "parsed"
+    # stated: clear size in the description. inferred: from Shopify's ML tech_specs (may be wrong).
+    # ambiguous: something found but not trusted. missing: nothing. Only the first two are placed.
+    dimension_confidence: Literal["stated", "inferred", "ambiguous", "missing"] = "missing"
 
 
 def _plain(text: str) -> str:
@@ -88,11 +98,26 @@ def parse_product(raw: dict[str, Any]) -> Product | None:
             "plain", ""
         )
         text = _plain(desc)
+        title = raw.get("title", "")
         dims = parse_dimensions(text)
+        confidence: Literal["stated", "inferred", "ambiguous", "missing"] = (
+            "stated" if dims.status == "parsed" else dims.status
+        )
+        if dims.status != "parsed":  # fall back to Shopify's inferred specs
+            specs = (raw.get("metadata") or {}).get("tech_specs")
+            if isinstance(specs, list):
+                inferred = parse_tech_specs([x for x in specs if isinstance(x, str)])
+                if inferred.status == "parsed":
+                    dims, confidence = inferred, "inferred"
+                elif dims.status == "missing" and inferred.status == "ambiguous":
+                    dims, confidence = inferred, "ambiguous"
+        if dims.dimensions and title_size_mismatch(title, dims.dimensions.w, dims.dimensions.d):
+            dims = ParseResult(status="ambiguous", reason="size_mismatch", source=dims.source)
+            confidence = "ambiguous"
         return Product(
             id=raw["id"],
             variant_id=v["id"],
-            title=raw.get("title", ""),
+            title=title,
             shop=Shop(
                 id=seller["id"], name=seller.get("name", ""), domain=seller.get("domain", "")
             ),
@@ -105,6 +130,7 @@ def parse_product(raw: dict[str, Any]) -> Product | None:
             dimension_source=dims.source,
             dimension_status=dims.status,
             dimension_reason=dims.reason,
+            dimension_confidence=confidence,
         )
     except (KeyError, TypeError, ValueError, AttributeError):  # ValueError covers pydantic
         return None

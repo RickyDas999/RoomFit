@@ -26,6 +26,7 @@ Reason = Literal[
     "implausible",
     "quantity",
     "too_many_values",
+    "size_mismatch",
 ]
 
 
@@ -272,4 +273,45 @@ def parse_dimensions(text: str) -> ParseResult:
         )
     if rejected:
         return ParseResult(status="ambiguous", reason=rejected[0])
+    return ParseResult(status="missing", reason="no_dimensions")
+
+
+# --- Shopify's ML-inferred `metadata.tech_specs`: a list like "Overall Dimensions: 48 x 24 x 30 in" ---
+_SPEC_LABEL_OK = re.compile(
+    r"^(?:(?:overall|assembled|product|item|bed|frame|desk|dresser|nightstand|table)\s+)?"
+    r"(?:dimensions?|size)(?:\s*\(.*\))?$",
+    re.IGNORECASE,
+)
+_SPEC_LABEL_NO = re.compile(
+    r"drawer|interior|inner|shelf|legroom|keyboard|package|packag|box|carton|shipping|"
+    r"mattress|headboard|footboard|seat|monitor|range|weight|capacity|desktop|tabletop|storage|slat",
+    re.IGNORECASE,
+)
+
+
+def parse_tech_specs(specs: list[str]) -> ParseResult:
+    """Read the overall-size line(s) of the tech specs. Same rules as the description parser."""
+    results: list[ParseResult] = []
+    for line in specs:
+        label, sep, value = line.partition(":")
+        label = label.strip()
+        if not sep or _SPEC_LABEL_NO.search(label) or not _SPEC_LABEL_OK.match(label):
+            continue
+        r = parse_dimensions(value)
+        if r.status != "missing":
+            results.append(r)
+    parsed = [r for r in results if r.status == "parsed"]
+    if len(parsed) == 1:
+        return parsed[0]
+    if len(parsed) > 1:
+        a = parsed[0].dimensions
+        if a and all(r.dimensions and _same_size(a, r.dimensions) for r in parsed[1:]):
+            return parsed[0]
+        return ParseResult(
+            status="ambiguous",
+            reason="multiple_sizes",
+            candidates=[r.dimensions for r in parsed if r.dimensions],
+        )
+    if results:
+        return results[0]
     return ParseResult(status="missing", reason="no_dimensions")

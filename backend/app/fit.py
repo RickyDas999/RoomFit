@@ -77,6 +77,12 @@ def orient(d: Dimensions) -> tuple[float, float]:
     return max(d.w, d.d), min(d.w, d.d)
 
 
+def orientations(d: Dimensions) -> list[tuple[float, float]]:
+    """Both ways to stand a piece: long side along the wall first, then turned 90 degrees."""
+    a, b = orient(d)
+    return [(a, b)] if a == b else [(a, b), (b, a)]
+
+
 def _box(
     sp: SlotPlan, along: float, across: float, origin: tuple[float, float] | None = None
 ) -> Rect:

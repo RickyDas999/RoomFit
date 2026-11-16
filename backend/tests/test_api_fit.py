@@ -34,6 +34,7 @@ def product(
         description="",
         dimensions=Dimensions(w=dims[0], d=dims[1]) if dims else None,
         dimension_status="parsed" if dims else "missing",
+        dimension_confidence="stated" if dims else "missing",
     )
 
 
@@ -234,8 +235,14 @@ def test_recommend_chair_is_the_cheapest_and_its_size_is_marked_assumed() -> Non
 def test_recommend_reports_search_stats() -> None:
     use(FakeCatalog(CATALOG))
     stats = client.post("/api/recommend", json={"room": ROOM}).json()["searched"]
-    assert stats["bed"] == {"found": 4, "with_dimensions": 3, "fit_slot": 2}
-    assert stats["desk"] == {"found": 4, "with_dimensions": 4, "fit_slot": 3}
+    assert stats["bed"] == {
+        "found": 4, "with_dimensions": 3, "fit_slot": 2,
+        "stated": 3, "inferred": 0, "ambiguous": 0, "missing": 1,
+    }
+    assert stats["desk"] == {
+        "found": 4, "with_dimensions": 4, "fit_slot": 3,
+        "stated": 4, "inferred": 0, "ambiguous": 0, "missing": 0,
+    }
     assert stats["desk_chair"]["with_dimensions"] == 0
 
 

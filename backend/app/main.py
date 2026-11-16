@@ -1,4 +1,5 @@
 import asyncio
+from collections import Counter
 from functools import lru_cache
 from typing import Annotated, Literal
 
@@ -8,7 +9,15 @@ from pydantic import BaseModel
 
 from app.beds import BedChoice, BedSize, label, matches_size, sizes_that_fit
 from app.catalog import CatalogClient, CatalogError, Product
-from app.fit import Evaluation, Footprints, Zone, evaluate_layout, orient, zones_for
+from app.fit import (
+    Evaluation,
+    Footprints,
+    Zone,
+    evaluate_layout,
+    orient,
+    orientations,
+    zones_for,
+)
 from app.room import NO_FIT, Rect, Room, Slot, plan_room, public_slots
 from app.rules import COVERAGE_WARN
 from app.search import SEARCH_LIMIT, Role, build_query
@@ -38,6 +47,9 @@ class LayoutItem(BaseModel):
     slot_id: Role
     product: Product
     footprint_basis: Literal["parsed", "assumed"] = "parsed"
+    # None: the engine tries both ways and keeps the better one. True: turned 90 degrees
+    # (short side along the wall). False: long side along the wall.
+    rotated: bool | None = None
 
 
 class Unplaced(BaseModel):
@@ -56,27 +68,49 @@ class EvaluateResponse(BaseModel):
     evaluation: Evaluation
     zones: list[Zone]  # clearance areas to shade, original room coordinates
     unplaced: list[Unplaced]
+    rotated: list[Role] = []  # pieces placed turned 90 degrees (short side along the wall)
 
 
-def _footprints(layout: list[LayoutItem]) -> tuple[Footprints, list[Unplaced]]:
-    fp: Footprints = {}
+ORDER: tuple[Role, ...] = ("bed", "nightstand", "dresser", "desk")  # desk last (chair clearance)
+
+
+def _score(ev: Evaluation) -> tuple[int, float]:
+    return len(ev.hard_fails), sum(f.short_in for f in ev.hard_fails)
+
+
+def _footprints(
+    room: Room, layout: list[LayoutItem]
+) -> tuple[Footprints, list[Role], list[Unplaced]]:
+    """Footprints for the layout. A piece with no chosen orientation gets the better of both."""
+    by_role: dict[Role, LayoutItem] = {}
     unplaced: list[Unplaced] = []
-    seen: set[str] = set()
     for item in layout:
-        if item.slot_id in seen:
+        if item.slot_id in by_role:
             raise HTTPException(422, f"slot {item.slot_id} appears twice")
-        seen.add(item.slot_id)
-        if item.slot_id == "desk_chair":
-            continue  # the chair footprint is assumed (rules.CHAIR_ASSUMED); it follows the desk
-        if item.product.dimensions is None:
-            unplaced.append(Unplaced(slot_id=item.slot_id, reason="dimensions missing"))
-        else:
-            fp[item.slot_id] = orient(item.product.dimensions)
-    return fp, unplaced
+        by_role[item.slot_id] = item
+    fp: Footprints = {}
+    rotated: list[Role] = []
+    for role in ORDER:
+        chosen_item = by_role.get(role)
+        if chosen_item is None:
+            continue
+        dims = chosen_item.product.dimensions
+        if dims is None:
+            unplaced.append(Unplaced(slot_id=role, reason="dimensions missing"))
+            continue
+        options = orientations(dims)
+        if chosen_item.rotated is not None:
+            options = [options[-1] if chosen_item.rotated else options[0]]
+        best = min(options, key=lambda o: _score(evaluate_layout(room, {**fp, role: o})[2]))
+        fp[role] = best
+        if best != orient(dims):
+            rotated.append(role)
+    # the chair's footprint is assumed (rules.CHAIR_ASSUMED); it follows the desk
+    return fp, rotated, unplaced
 
 
 def _evaluate(room: Room, layout: list[LayoutItem]) -> EvaluateResponse:
-    fp, unplaced = _footprints(layout)
+    fp, rotated, unplaced = _footprints(room, layout)
     plan, placed, ev = evaluate_layout(room, fp)
     return EvaluateResponse(
         slots=public_slots(room, plan),
@@ -87,6 +121,7 @@ def _evaluate(room: Room, layout: list[LayoutItem]) -> EvaluateResponse:
             for z in zones_for(plan, placed, ev)
         ],
         unplaced=unplaced,
+        rotated=rotated,
     )
 
 
@@ -102,8 +137,12 @@ class RecommendRequest(BaseModel):
 
 class SearchStats(BaseModel):
     found: int
-    with_dimensions: int
+    with_dimensions: int  # usable: stated + inferred
     fit_slot: int
+    stated: int = 0
+    inferred: int = 0
+    ambiguous: int = 0
+    missing: int = 0
 
 
 class Candidate(BaseModel):
@@ -169,8 +208,10 @@ async def recommend(
         sp = plan.slots[role]
         if p.dimensions is None:
             return False
-        along, across = orient(p.dimensions)
-        return along <= sp.max_along + 1e-9 and across <= sp.max_across + 1e-9
+        return any(
+            along <= sp.max_along + 1e-9 and across <= sp.max_across + 1e-9
+            for along, across in orientations(p.dimensions)
+        )
 
     fp: Footprints = {}
     chosen: list[LayoutItem] = []
@@ -187,19 +228,36 @@ async def recommend(
             fitting = [
                 p for p in fitting if p.dimensions and matches_size(size, *orient(p.dimensions))
             ]
+        count = Counter(p.dimension_confidence for p in products)
         stats[role] = SearchStats(
-            found=len(products), with_dimensions=len(sized), fit_slot=len(fitting)
+            found=len(products),
+            with_dimensions=len(sized),
+            fit_slot=len(fitting),
+            stated=count["stated"],
+            inferred=count["inferred"],
+            ambiguous=count["ambiguous"],
+            missing=count["missing"],
         )
+        sp = plan.slots[role]
         for p in cheapest_first(fitting):
             assert p.dimensions is not None
-            trial = {**fp, role: orient(p.dimensions)}
-            ev = evaluate_layout(room, trial)[2]
-            if not _worse_than(ev, baseline) and (
-                role != "bed" or ev.coverage_pct <= COVERAGE_WARN
-            ):
-                fp[role] = trial[role]
-                chosen.append(LayoutItem(slot_id=role, product=p))
-                return
+            for along, across in orientations(p.dimensions):  # long side along the wall first
+                if along > sp.max_along + 1e-9 or across > sp.max_across + 1e-9:
+                    continue
+                trial = {**fp, role: (along, across)}
+                ev = evaluate_layout(room, trial)[2]
+                if not _worse_than(ev, baseline) and (
+                    role != "bed" or ev.coverage_pct <= COVERAGE_WARN
+                ):
+                    fp[role] = trial[role]
+                    chosen.append(
+                        LayoutItem(
+                            slot_id=role,
+                            product=p,
+                            rotated=(along, across) != orient(p.dimensions),
+                        )
+                    )
+                    return
 
     # bed first, in the biggest size that suits the room (or the size the renter asked for)
     bed_size: BedSize | None = None
