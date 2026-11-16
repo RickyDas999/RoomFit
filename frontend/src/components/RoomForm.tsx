@@ -1,5 +1,6 @@
-import { WALLS, wallLength, type RoomForm, DOOR_WIDTH, WINDOW_WIDTH } from '../room'
-import type { Wall } from '../api/types'
+import { BED_CHOICES, NEEDS, WALLS, wallLength, type RoomForm, DOOR_WIDTH, WINDOW_WIDTH } from '../room'
+import { SCENARIOS, matchScenario } from '../scenarios'
+import type { BedChoice, Need, Wall } from '../api/types'
 
 interface Props {
   form: RoomForm
@@ -42,6 +43,32 @@ export function RoomFormView({ form, errors, busy, onChange, onReset, onSubmit }
       <h2 id="room-form-title">Your room</h2>
       <p className="hint">All lengths are in inches. 12 ft is 144 in.</p>
 
+      <div className="field">
+        <label htmlFor="scenario">Start from an example</label>
+        <select
+          id="scenario"
+          name="scenario"
+          value={matchScenario(form)?.id ?? ''}
+          aria-describedby="scenario-hint"
+          onChange={(e) => {
+            const pick = SCENARIOS.find((sc) => sc.id === e.target.value)
+            if (pick) onChange(pick.form)
+          }}
+        >
+          <option value="" disabled>
+            Custom room
+          </option>
+          {SCENARIOS.map((sc) => (
+            <option key={sc.id} value={sc.id}>
+              {sc.label}
+            </option>
+          ))}
+        </select>
+        <span id="scenario-hint" className="hint">
+          {matchScenario(form)?.blurb ?? 'Pick an example to fill in the form, then change anything.'}
+        </span>
+      </div>
+
       <div className="row">
         <div className="field">
           <label htmlFor="width">Width (in)</label>
@@ -72,6 +99,41 @@ export function RoomFormView({ form, errors, busy, onChange, onReset, onSubmit }
           <input type="checkbox" name="closet" checked={form.closet} onChange={(e) => set('closet', e.target.checked)} />
           Closet (48 x 24 in, in the corner at the start of the door wall)
         </label>
+      </div>
+
+      <fieldset className="field-group">
+        <legend>What do you need?</legend>
+        <div className="choices">
+          <label className="choice">
+            <input type="checkbox" checked disabled /> Bed (always)
+          </label>
+          {NEEDS.map((n) => (
+            <label key={n.id} className="choice">
+              <input
+                type="checkbox"
+                name={`need-${n.id}`}
+                checked={form.needs.includes(n.id)}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  const needs: Need[] = NEEDS.map((x) => x.id).filter((id) => (id === n.id ? on : form.needs.includes(id)))
+                  set('needs', needs)
+                }}
+              />
+              {n.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="field">
+        <label htmlFor="bed-size">Bed size</label>
+        <select id="bed-size" name="bed-size" value={form.bedSize} onChange={(e) => set('bedSize', e.target.value as BedChoice)}>
+          {BED_CHOICES.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {bad && (

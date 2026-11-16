@@ -1,4 +1,4 @@
-import type { Room, Wall } from './api/types'
+import type { BedChoice, Need, Room, Wall } from './api/types'
 
 /** The room form works in inches, like the API. */
 export interface RoomForm {
@@ -9,6 +9,8 @@ export interface RoomForm {
   windowWall: Wall
   windowOffset: number
   closet: boolean
+  needs: Need[] // pieces wanted besides the bed (always wanted)
+  bedSize: BedChoice
 }
 
 export const DOOR_WIDTH = 32
@@ -25,7 +27,23 @@ export const SAMPLE_FORM: RoomForm = {
   windowWall: 'bottom',
   windowOffset: 48,
   closet: true,
+  needs: ['nightstand', 'dresser', 'desk'],
+  bedSize: 'auto',
 }
+
+export const NEEDS: { id: Need; label: string }[] = [
+  { id: 'nightstand', label: 'Nightstand' },
+  { id: 'dresser', label: 'Dresser' },
+  { id: 'desk', label: 'Desk and chair' },
+]
+
+export const BED_CHOICES: { id: BedChoice; label: string }[] = [
+  { id: 'auto', label: 'Auto (the biggest that fits)' },
+  { id: 'twin_xl', label: 'Twin XL' },
+  { id: 'full', label: 'Full' },
+  { id: 'queen', label: 'Queen' },
+  { id: 'king', label: 'King' },
+]
 
 export const WALLS: Wall[] = ['top', 'bottom', 'left', 'right']
 
@@ -57,6 +75,7 @@ export function toRoom(form: RoomForm): Room {
     door: { wall: form.doorWall, offset: form.doorOffset, width: DOOR_WIDTH, swing: 'in' },
     window: { wall: form.windowWall, offset: form.windowOffset, width: WINDOW_WIDTH },
     closet: form.closet ? closetRect(form) : null,
+    needs: form.needs,
   }
 }
 

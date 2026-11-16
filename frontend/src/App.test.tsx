@@ -9,7 +9,7 @@ const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.
 
 interface Api {
   evaluate?: (body: { room: Json; layout: Json[] }) => Promise<Response>
-  recommend?: (body: { room: Json }) => Promise<Response>
+  recommend?: (body: { room: Json; bed_size?: string }) => Promise<Response>
 }
 
 function mockApi(api: Api = {}) {
@@ -337,5 +337,54 @@ describe('room edits while things are in flight (review findings)', () => {
     await new Promise((r) => setTimeout(r, 400))
     pending.resolve(await json(makePlan()))
     await waitFor(() => expect(document.querySelector('figure')).not.toHaveClass('plan--stale'))
+  })
+})
+
+
+describe('scenarios, needs and bed size', () => {
+  it('picking an example redraws the room and clears the products from the old room', async () => {
+    const f = mockApi()
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(findButton())
+    await screen.findByText('Twin XL bed')
+    fireEvent.change(screen.getByLabelText('Start from an example'), { target: { value: 'wfh' } })
+    expect(screen.queryByText('Twin XL bed')).not.toBeInTheDocument()
+    await waitFor(() => expect(calls(f, '/api/evaluate').at(-1)?.room).toMatchObject({ width: 176, depth: 192 }))
+  })
+
+  it('sends the needs and the chosen bed size to the search', async () => {
+    const f = mockApi()
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Desk and chair' }))
+    fireEvent.change(screen.getByLabelText('Bed size'), { target: { value: 'queen' } })
+    fireEvent.click(findButton())
+    await screen.findByText('Twin XL bed')
+    const [body] = f.mock.calls.filter((c) => c[0] === '/api/recommend').map((c) => JSON.parse(String(c[1].body)))
+    expect(body.bed_size).toBe('queen')
+    expect(body.room.needs).toEqual(['nightstand', 'dresser'])
+  })
+
+  it('hides the cards for pieces that are not wanted (the chair goes with the desk)', async () => {
+    mockApi()
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    expect(screen.getByTestId('slot-desk_chair')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Desk and chair' }))
+    expect(screen.queryByTestId('slot-desk')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('slot-desk_chair')).not.toBeInTheDocument()
+    expect(screen.getByTestId('slot-bed')).toBeInTheDocument()
+    expect(screen.getByTestId('slot-dresser')).toBeInTheDocument()
+  })
+
+  it('explains the bed size on the bed card, and the planner note on a moved piece', async () => {
+    const plan = makePlan({ slots: makePlan().slots.map((s) => (s.role === 'desk' ? { ...s, note: 'on the door wall: the far side of the room has no space for a desk' } : s)) })
+    mockApi({ recommend: () => json(makeRecommend({ ...plan, bed_size: 'queen', bed_size_reason: 'Queen: the biggest size that fits this room' })) })
+    render(<App />)
+    await screen.findByTestId('floorplan')
+    fireEvent.click(findButton())
+    expect(await within(screen.getByTestId('slot-bed')).findByText(/Queen: the biggest size that fits this room/)).toBeInTheDocument()
+    expect(within(screen.getByTestId('slot-desk')).getByText(/on the door wall/)).toBeInTheDocument()
   })
 })

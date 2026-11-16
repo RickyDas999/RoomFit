@@ -4,6 +4,8 @@ import { ROLE_LABEL } from '../api/types'
 import { formatDimensions, formatPrice, reasonText, safeUrl } from '../format'
 
 interface Props {
+  /** Why this size or place was chosen (e.g. "Queen: the biggest size that fits this room"). */
+  explain?: string | null
   slot: Slot
   item?: LayoutItem
   /** Why nothing is placed in this slot, if the server said. */
@@ -59,7 +61,7 @@ function ProductSummary({ product, assumed, slot }: { product: Product; assumed:
   )
 }
 
-export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap }: Props) {
+export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap, explain }: Props) {
   const [open, setOpen] = useState(false)
   const listId = useId()
   const label = ROLE_LABEL[slot.role]
@@ -72,6 +74,7 @@ export function SlotCard({ slot, item, unplacedReason, candidates, busy, onSwap 
       </header>
 
       {!slot.fits && <p className="slot__note">{slot.note ?? `no ${label.toLowerCase()} fits under these rules`}</p>}
+      {slot.fits && (slot.note || explain) && <p className="slot__why">{[explain, slot.note].filter(Boolean).join('. ')}</p>}
       {slot.fits && !item && <p className="slot__note">{unplacedReason ?? 'Nothing chosen yet.'}</p>}
       {item && <ProductSummary product={item.product} assumed={assumed} slot={slot} />}
       {item && unplacedReason && <p className="slot__note">{unplacedReason}</p>}

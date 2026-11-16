@@ -439,6 +439,18 @@
       },
       "RecommendRequest": {
         "properties": {
+          "bed_size": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "twin_xl",
+              "full",
+              "queen",
+              "king"
+            ],
+            "title": "Bed Size",
+            "type": "string"
+          },
           "room": {
             "$ref": "#/components/schemas/Room"
           }
@@ -451,6 +463,34 @@
       },
       "RecommendResponse": {
         "properties": {
+          "bed_size": {
+            "anyOf": [
+              {
+                "enum": [
+                  "twin_xl",
+                  "full",
+                  "queen",
+                  "king"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bed Size"
+          },
+          "bed_size_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bed Size Reason"
+          },
           "candidates": {
             "additionalProperties": {
               "items": {
@@ -599,6 +639,18 @@
           },
           "door": {
             "$ref": "#/components/schemas/Door"
+          },
+          "needs": {
+            "items": {
+              "enum": [
+                "nightstand",
+                "dresser",
+                "desk"
+              ],
+              "type": "string"
+            },
+            "title": "Needs",
+            "type": "array"
           },
           "width": {
             "exclusiveMinimum": 0.0,

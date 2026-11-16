@@ -11,6 +11,7 @@ describe('toRoom', () => {
       door: { wall: 'top', offset: 56, width: 32, swing: 'in' },
       window: { wall: 'bottom', offset: 48, width: 48 },
       closet: { x: 0, y: 0, w: 48, d: 24 },
+      needs: ['nightstand', 'dresser', 'desk'],
     })
   })
 

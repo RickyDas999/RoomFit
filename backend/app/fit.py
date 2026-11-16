@@ -94,9 +94,11 @@ def _box(
 def place_all(plan: Plan, fp: Footprints) -> dict[Role, Rect]:
     """Snap each footprint to its slot. Nightstand hugs the bed; chair sits in front of the desk."""
     placed: dict[Role, Rect] = {}
-    for role in ("bed", "desk", "dresser"):
+    for role in ("bed", "dresser"):
         if role in fp:
             placed[role] = _box(plan.slots[role], *fp[role])
+    if "desk" in fp:
+        placed["desk"] = _box(plan.slots["desk"], *fp["desk"])
     if "nightstand" in fp:
         sp = plan.slots["nightstand"]
         origin = sp.origin
@@ -106,6 +108,10 @@ def place_all(plan: Plan, fp: Footprints) -> dict[Role, Rect]:
         placed["nightstand"] = _box(sp, *fp["nightstand"], origin=origin)
     if "desk" in placed:
         desk, (cw, cd) = placed["desk"], CHAIR_ASSUMED
+        if plan.desk_on_top:  # chair below the desk, centered
+            x = min(max(desk.x + (desk.w - cw) / 2, 0.0), plan.W - cw)
+            placed["desk_chair"] = Rect(x=x, y=desk.y2, w=cw, d=cd)
+            return placed
         on_left = plan.slots["desk"].across_dir > 0
         y = min(max(desk.y + (desk.d - cd) / 2, 0.0), plan.D - cd)  # stay inside the room
         placed["desk_chair"] = Rect(x=desk.x2 if on_left else desk.x - cw, y=y, w=cw, d=cd)
@@ -215,7 +221,7 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
                 )
             )
     if "desk_chair" in placed:  # behind the chair = away from the desk
-        away = "+x" if plan.slots["desk"].across_dir > 0 else "-x"
+        away = "+y" if plan.desk_on_top else "+x" if plan.slots["desk"].across_dir > 0 else "-x"
         free = _free(placed["desk_chair"], away, obstacles_for("desk_chair"), W, D)
         if free + EPS < CHAIR_BACK:
             fails.append(
@@ -234,9 +240,9 @@ def evaluate_placed(plan: Plan, placed: dict[Role, Rect]) -> Evaluation:
     missing = []
     if "bed" not in placed:
         missing.append("sleep")
-    if "desk" not in placed or "desk_chair" not in placed:
+    if "desk" in plan.needs and ("desk" not in placed or "desk_chair" not in placed):
         missing.append("study")
-    if "dresser" not in placed and plan.closet is None:
+    if "dresser" in plan.needs and "dresser" not in placed and plan.closet is None:
         missing.append("storage")
     return Evaluation(
         hard_fails=fails,
@@ -285,7 +291,10 @@ def zones_for(plan: Plan, placed: dict[Role, Rect], ev: Evaluation) -> list[Zone
     if "desk_chair" in placed:
         c = placed["desk_chair"]
         behind_right = plan.slots["desk"].across_dir > 0  # desk on the left wall: behind = +x
-        add("behind_desk_chair", Rect(x=c.x2 if behind_right else c.x - CHAIR_BACK, y=c.y, w=CHAIR_BACK, d=c.d))
+        if plan.desk_on_top:  # desk on the door wall: behind the chair = below it
+            add("behind_desk_chair", Rect(x=c.x, y=c.y2, w=c.w, d=CHAIR_BACK))
+        else:
+            add("behind_desk_chair", Rect(x=c.x2 if behind_right else c.x - CHAIR_BACK, y=c.y, w=CHAIR_BACK, d=c.d))
     return zones
 
 

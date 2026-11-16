@@ -378,7 +378,9 @@ def test_closet_on_bed_side_shrinks_bed_slot_not_overlapping() -> None:
         closet=Rect(x=96, y=168, w=48, d=24),
     )
     plan = plan_room(room)
-    assert plan.bed_side == "right"
+    # the closet takes the right-hand bed corner, so the planner moves the bed to the left
+    assert plan.bed_side == "left"
+    assert plan.notes and "bed" in plan.notes
     bed = plan.slots["bed"]
     assert plan.closet and not bed.region.intersects(plan.closet)
     ev = evaluate_layout(room, {"bed": (bed.max_along, bed.max_across)})[2]
