@@ -78,7 +78,7 @@ def title_size_mismatch(title: str, along: float, across: float) -> bool:
         else re.sub(r"[\s-]+", " ", m.lower())
         for m in _TITLE_NAME.findall(title)
     }
-    if len(names) != 1 or len(set(w.lower() for w in _ANY_SIZE_WORD.findall(title))) > 1:
+    if len(names) != 1 or len({w.lower() for w in _ANY_SIZE_WORD.findall(title)}) > 1:
         return False
     ml, mw = max(_TITLE_SIZES[next(iter(names))]), min(_TITLE_SIZES[next(iter(names))])
     long_side, short_side = max(along, across), min(along, across)
